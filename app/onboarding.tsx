@@ -20,7 +20,7 @@ export default function OnboardingScreen() {
 
   const handleGetStarted = async () => {
     await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
-    router.replace('/(tabs)/record');
+    router.replace('/sign-in');
   };
 
   const handleHoverIn = () => {

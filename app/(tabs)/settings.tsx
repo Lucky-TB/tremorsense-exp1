@@ -24,6 +24,9 @@ import {
   exportSessionsAsCSV,
   loadAllSessions,
 } from '@/utils/storage';
+import { router } from 'expo-router';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/config/firebase';
 import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -103,6 +106,26 @@ export default function SettingsScreen() {
       Alert.alert('Export Failed', 'Could not export data. Please try again.');
       console.error(error);
     }
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Log out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            if (auth) {
+              await signOut(auth);
+            }
+            router.replace('/sign-in');
+          },
+        },
+      ]
+    );
   };
 
   const handleClearData = () => {
@@ -314,6 +337,17 @@ export default function SettingsScreen() {
             A motion tracking and visualization app
           </Text>
         </View>
+
+        {/* Log out */}
+        <TouchableOpacity
+          style={[styles.logoutButton, { backgroundColor: cardColor }]}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.logoutButtonText, { color: dangerColor }]}>
+            Log out
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Privacy Modal */}
@@ -395,7 +429,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
   header: {
     marginBottom: 28,
@@ -489,6 +523,23 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 15,
     marginBottom: 8,
+  },
+  logoutButton: {
+    marginTop: 8,
+    marginBottom: 24,
+    paddingVertical: 18,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  logoutButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   modalContainer: {
     flex: 1,
