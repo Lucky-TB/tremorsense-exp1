@@ -1,5 +1,3 @@
-// Line chart component using react-native-chart-kit
-
 import React from 'react';
 import { Dimensions, View, Text, StyleSheet } from 'react-native';
 import { LineChart as RNLineChart } from 'react-native-chart-kit';
@@ -15,7 +13,6 @@ interface LineChartProps {
   yAxisSuffix?: string;
   color?: string;
   height?: number;
-  /** Chart width (default: screen - 72 to avoid label overflow) */
   width?: number;
 }
 
@@ -35,8 +32,7 @@ export function LineChart({
   const textColor = isDark ? '#FFFFFF' : '#000000';
   const backgroundColor = isDark ? '#1C1C1E' : '#FFFFFF';
   const gridColor = isDark ? '#2C2C2E' : '#E5E5EA';
-  
-  // Prepare data for chart
+
   const chartData = {
     labels: labels || data.map((_, i) => ''),
     datasets: [

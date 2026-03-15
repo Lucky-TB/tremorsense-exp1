@@ -7,9 +7,7 @@ export type ThemePreference = 'light' | 'dark' | 'auto';
 export type ResolvedTheme = 'light' | 'dark';
 
 type ThemeContextValue = {
-  /** Resolved theme (always 'light' or 'dark') for styling */
   theme: ResolvedTheme;
-  /** User preference from settings */
   preference: ThemePreference;
   setPreference: (p: ThemePreference) => Promise<void>;
 };

@@ -1,5 +1,3 @@
-// Settings tab - Configuration and data management
-
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -159,7 +157,6 @@ export default function SettingsScreen() {
     );
   }
 
-  // Same purple/white scheme as rest of app
   const PURPLE = '#6B4EAA';
   const backgroundColor = isDark ? '#1a1520' : '#F5F2FA';
   const cardColor = isDark ? '#2a2433' : '#FFFFFF';
@@ -225,7 +222,6 @@ export default function SettingsScreen() {
           <Text style={[styles.title, { color: primaryColor }]}>Settings</Text>
         </View>
 
-        {/* Recording Settings */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Recording Settings</Text>
 
@@ -249,7 +245,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Appearance - Light / Dark / System */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Appearance</Text>
           <Text style={[styles.settingLabel, { color: textColor }]}>Theme</Text>
@@ -282,7 +277,6 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
-        {/* Data Management */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Data Management</Text>
 
@@ -314,7 +308,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Privacy & Ethics */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Privacy & Ethics</Text>
           <TouchableOpacity
@@ -327,7 +320,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* App Info */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>About</Text>
           <Text style={[styles.infoText, { color: secondaryTextColor }]}>
@@ -338,7 +330,6 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
-        {/* Log out */}
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: cardColor }]}
           onPress={handleLogout}
@@ -350,7 +341,6 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Privacy Modal */}
       <Modal
         visible={privacyModalVisible}
         animationType="slide"

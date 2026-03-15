@@ -1,5 +1,3 @@
-// Chatbot - ChatGPT-style layout + subtle flowy typing (app color scheme)
-
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -24,14 +22,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const PURPLE = '#6B4EAA';
 const WHITE = '#FFFFFF';
 
-// Single welcome message for a new chat
 const NEW_CHAT_WELCOME = {
   id: 'welcome',
   role: 'ai' as const,
   text: "Hi! I'm your TremorSense assistant.\n\nTo get the most out of this, you can ask me:\n• How to improve your tremor readings\n• What your charts and severity scores mean\n• Tips for managing symptoms day to day\n• When to share data with your care team\n\nAsk anything in the box below.",
 };
 
-// Start with same state as "New chat": one welcome message so send/scroll behavior is identical
 const INITIAL_MESSAGES: { id: string; role: 'user' | 'ai'; text: string }[] = [
   { ...NEW_CHAT_WELCOME, id: `welcome-${Date.now()}` },
 ];
@@ -80,7 +76,6 @@ export default function InsightsScreen() {
   const inputBg = isDark ? '#2a2433' : '#E8E4F0';
   const borderColor = isDark ? '#3d3548' : '#E5E5EA';
 
-  // On first load, do the same as "New chat": scroll to top so send/scroll works identically
   useEffect(() => {
     const t = setTimeout(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -88,14 +83,12 @@ export default function InsightsScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  // Clear scroll-to-end timer on unmount
   useEffect(() => {
     return () => {
       if (scrollToEndTimerRef.current) clearTimeout(scrollToEndTimerRef.current);
     };
   }, []);
 
-  // Flowy: gentle input height change while typing (Gemini-style)
   useEffect(() => {
     const lineCount = (input.match(/\n/g) || []).length + 1;
     const targetHeight = Math.min(44 + lineCount * 22, 120);
@@ -122,7 +115,6 @@ export default function InsightsScreen() {
 
     setMessages((prev) => [...prev, newMessage]);
 
-    // Schedule scroll-to-end at several times so we catch layout (latest message must be visible)
     const scrollToEnd = () => scrollRef.current?.scrollToEnd({ animated: true });
     [0, 50, 150, 300].forEach((ms) => {
       const t = setTimeout(scrollToEnd, ms);
@@ -130,7 +122,6 @@ export default function InsightsScreen() {
     });
   };
 
-  // When content grows (new message), scroll to end so user sees what they just sent
   const handleContentSizeChange = (_w: number, h: number) => {
     const prev = contentHeightRef.current;
     contentHeightRef.current = h;
@@ -155,7 +146,6 @@ export default function InsightsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bg }]} edges={['top']}>
-      {/* Header bar - ChatGPT style */}
       <View style={[styles.headerBar, { backgroundColor: bg, borderBottomColor: borderColor }]}>
         <Pressable style={styles.headerIcon} hitSlop={12}>
           <Ionicons name="menu" size={24} color={textColor} />
@@ -193,7 +183,6 @@ export default function InsightsScreen() {
               ) : (
                 <View style={styles.aiWrap}>
                   {renderAiContent(msg.text, textColor)}
-                  {/* Action row under last AI message */}
                   {msg.id === messages.filter((m) => m.role === 'ai').pop()?.id && (
                     <View style={styles.actionRow}>
                       <Pressable style={styles.actionBtn}>
@@ -219,7 +208,6 @@ export default function InsightsScreen() {
           ))}
         </ScrollView>
 
-        {/* Input bar - + and icons centered vertically; send fixed size to avoid glitch */}
         <View style={[styles.inputBarWrap, { backgroundColor: bg, borderTopColor: borderColor }]}>
           <View style={[styles.inputBar, { backgroundColor: inputBg }]}>
             <View style={styles.inputBarIconCentered}>

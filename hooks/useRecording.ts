@@ -1,58 +1,60 @@
-// Custom hook for recording sessions
-
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { RecordingSession, RecordingContext, SamplingRate } from '@/types';
-import { useSensors } from './useSensors';
-import { calculateMagnitudeArray, calculateStats } from '@/utils/signalProcessing';
-import { saveSession } from '@/utils/storage';
+import { RecordingContext, RecordingSession, SamplingRate } from "@/types";
+import {
+  calculateMagnitudeArray,
+  calculateStats,
+} from "@/utils/signalProcessing";
+import { saveSession } from "@/utils/storage";
+import { useCallback, useRef, useState } from "react";
+import { useSensors } from "./useSensors";
 
 export function useRecording(
   samplingRate: SamplingRate,
   duration: number,
-  context?: RecordingContext
+  context?: RecordingContext,
+  onComplete?: (session: RecordingSession | null) => void,
 ) {
   const [isRecording, setIsRecording] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  
-  const { isAvailable, readings, clearReadings, getReadings } = useSensors(samplingRate, isRecording);
+
+  const { isAvailable, readings, clearReadings, getReadings, accelerometerData, gyroscopeData } =
+    useSensors(samplingRate, isRecording);
   const startTimeRef = useRef<number | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const stopRecording = useCallback(async () => {
     setIsRecording(false);
     setProgress(0);
-    
+
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
       progressIntervalRef.current = null;
     }
 
     const allReadings = getReadings();
-    
+
     if (allReadings.length === 0) {
-      setError('No data collected');
+      setError("No data collected");
+      onComplete?.(null);
       return null;
     }
 
-    // Process data
     const accelerometer = {
-      x: allReadings.map(r => r.accelerometer.x),
-      y: allReadings.map(r => r.accelerometer.y),
-      z: allReadings.map(r => r.accelerometer.z),
+      x: allReadings.map((r) => r.accelerometer.x),
+      y: allReadings.map((r) => r.accelerometer.y),
+      z: allReadings.map((r) => r.accelerometer.z),
     };
 
     const gyroscope = {
-      x: allReadings.map(r => r.gyroscope.x),
-      y: allReadings.map(r => r.gyroscope.y),
-      z: allReadings.map(r => r.gyroscope.z),
+      x: allReadings.map((r) => r.gyroscope.x),
+      y: allReadings.map((r) => r.gyroscope.y),
+      z: allReadings.map((r) => r.gyroscope.z),
     };
 
     const magnitude = calculateMagnitudeArray(accelerometer);
     const stats = calculateStats(magnitude);
 
-    // Create session
     const session: RecordingSession = {
       id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       timestamp: startTimeRef.current || Date.now(),
@@ -68,26 +70,27 @@ export function useRecording(
       await saveSession(session);
       clearReadings();
       startTimeRef.current = null;
+      onComplete?.(session);
       return session;
     } catch (err) {
-      setError('Failed to save session');
+      setError("Failed to save session");
       console.error(err);
+      onComplete?.(null);
       return null;
     }
-  }, [getReadings, clearReadings, context, duration]);
+  }, [getReadings, clearReadings, context, duration, onComplete]);
 
   const startRecording = useCallback(async () => {
     if (!isAvailable) {
-      setError('Sensors are not available on this device');
+      setError("Sensors are not available on this device");
       return;
     }
 
     setError(null);
     clearReadings();
 
-    // Countdown
     setCountdown(3);
-    await new Promise(resolve => {
+    await new Promise((resolve) => {
       let count = 3;
       const countdownInterval = setInterval(() => {
         count--;
@@ -101,12 +104,10 @@ export function useRecording(
       }, 1000);
     });
 
-    // Start recording
     setIsRecording(true);
     const startTime = Date.now();
     startTimeRef.current = startTime;
 
-    // Update progress
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
     }
@@ -134,5 +135,7 @@ export function useRecording(
     startRecording,
     stopRecording,
     isAvailable,
+    accelerometerData,
+    gyroscopeData,
   };
 }

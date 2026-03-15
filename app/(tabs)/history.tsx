@@ -1,30 +1,34 @@
-// History tab - List of all recording sessions
-
-import React, { useState, useEffect, useCallback } from 'react';
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { RecordingSession } from "@/types";
+import { getTremorScore, getTremorScoreLabel } from "@/utils/signalProcessing";
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
+  deleteSession,
+  deleteSessions,
+  loadAllSessions,
+} from "@/utils/storage";
+import { useFocusEffect } from "@react-navigation/native";
+import * as Haptics from "expo-haptics";
+import React, { useCallback, useState } from "react";
+import {
   Alert,
-  RefreshControl,
+  FlatList,
   Modal,
+  RefreshControl,
   ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { RecordingSession } from '@/types';
-import { loadAllSessions, deleteSession, deleteSessions } from '@/utils/storage';
-import { useFocusEffect } from '@react-navigation/native';
-import * as Haptics from 'expo-haptics';
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HistoryScreen() {
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  
+  const isDark = colorScheme === "dark";
+
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
-  const [selectedSession, setSelectedSession] = useState<RecordingSession | null>(null);
+  const [selectedSession, setSelectedSession] =
+    useState<RecordingSession | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -38,7 +42,7 @@ export default function HistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       loadSessions();
-    }, [])
+    }, []),
   );
 
   const onRefresh = async () => {
@@ -66,34 +70,34 @@ export default function HistoryScreen() {
 
   const handleDelete = (sessionId: string) => {
     Alert.alert(
-      'Delete Session',
-      'Are you sure you want to delete this session?',
+      "Delete Session",
+      "Are you sure you want to delete this session?",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             await deleteSession(sessionId);
             await loadSessions();
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           },
         },
-      ]
+      ],
     );
   };
 
   const handleBulkDelete = () => {
     if (selectedIds.size === 0) return;
-    
+
     Alert.alert(
-      'Delete Sessions',
+      "Delete Sessions",
       `Are you sure you want to delete ${selectedIds.size} session(s)?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             await deleteSessions(Array.from(selectedIds));
             setSelectedIds(new Set());
@@ -102,7 +106,7 @@ export default function HistoryScreen() {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           },
         },
-      ]
+      ],
     );
   };
 
@@ -112,24 +116,24 @@ export default function HistoryScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const backgroundColor = isDark ? '#000000' : '#F2F2F7';
-  const cardColor = isDark ? '#1C1C1E' : '#FFFFFF';
-  const textColor = isDark ? '#FFFFFF' : '#000000';
-  const secondaryTextColor = isDark ? '#98989D' : '#6D6D70';
-  const primaryColor = isDark ? '#4A9EFF' : '#007AFF';
-  const dangerColor = '#FF3B30';
+  const backgroundColor = isDark ? "#000000" : "#F2F2F7";
+  const cardColor = isDark ? "#1C1C1E" : "#FFFFFF";
+  const textColor = isDark ? "#FFFFFF" : "#000000";
+  const secondaryTextColor = isDark ? "#98989D" : "#6D6D70";
+  const primaryColor = isDark ? "#4A9EFF" : "#007AFF";
+  const dangerColor = "#FF3B30";
 
   const renderSession = ({ item }: { item: RecordingSession }) => {
     const date = new Date(item.timestamp);
     const isSelected = selectedIds.has(item.id);
-    
+
     return (
       <TouchableOpacity
         style={[
           styles.sessionCard,
           {
-            backgroundColor: isSelected ? primaryColor + '20' : cardColor,
-            borderColor: isSelected ? primaryColor : 'transparent',
+            backgroundColor: isSelected ? primaryColor + "20" : cardColor,
+            borderColor: isSelected ? primaryColor : "transparent",
             borderWidth: isSelected ? 2 : 0,
           },
         ]}
@@ -144,9 +148,15 @@ export default function HistoryScreen() {
         <View style={styles.sessionHeader}>
           <View style={styles.sessionInfo}>
             <Text style={[styles.sessionDate, { color: textColor }]}>
-              {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {date.toLocaleDateString()}{" "}
+              {date.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </Text>
-            <Text style={[styles.sessionDuration, { color: secondaryTextColor }]}>
+            <Text
+              style={[styles.sessionDuration, { color: secondaryTextColor }]}
+            >
               {item.duration}s • {item.magnitude.length} samples
             </Text>
           </View>
@@ -155,26 +165,47 @@ export default function HistoryScreen() {
               onPress={() => handleDelete(item.id)}
               style={styles.deleteButton}
             >
-              <Text style={[styles.deleteButtonText, { color: dangerColor }]}>Delete</Text>
+              <Text style={[styles.deleteButtonText, { color: dangerColor }]}>
+                Delete
+              </Text>
             </TouchableOpacity>
           )}
         </View>
-        
+
+        <View style={styles.tremorScoreRow}>
+          <Text
+            style={[styles.tremorScoreLabel, { color: secondaryTextColor }]}
+          >
+            Hand tremor likelihood
+          </Text>
+          <Text style={[styles.tremorScoreValue, { color: textColor }]}>
+            {getTremorScore(item.stats)}/100
+          </Text>
+          <Text style={[styles.tremorScoreSub, { color: secondaryTextColor }]}>
+            {getTremorScoreLabel(getTremorScore(item.stats))}
+          </Text>
+        </View>
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>Amplitude</Text>
+            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>
+              Amplitude
+            </Text>
             <Text style={[styles.statValue, { color: textColor }]}>
               {item.stats.meanAmplitude.toFixed(3)}
             </Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>Variability</Text>
+            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>
+              Variability
+            </Text>
             <Text style={[styles.statValue, { color: textColor }]}>
               {item.stats.variability.toFixed(3)}
             </Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>Peak</Text>
+            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>
+              Peak
+            </Text>
             <Text style={[styles.statValue, { color: textColor }]}>
               {item.stats.peakAmplitude.toFixed(3)}
             </Text>
@@ -184,18 +215,30 @@ export default function HistoryScreen() {
         {item.context && (
           <View style={styles.contextTags}>
             {item.context.caffeine && (
-              <View style={[styles.tag, { backgroundColor: primaryColor + '20' }]}>
-                <Text style={[styles.tagText, { color: primaryColor }]}>Caffeine</Text>
+              <View
+                style={[styles.tag, { backgroundColor: primaryColor + "20" }]}
+              >
+                <Text style={[styles.tagText, { color: primaryColor }]}>
+                  Caffeine
+                </Text>
               </View>
             )}
             {item.context.sleepDeprived && (
-              <View style={[styles.tag, { backgroundColor: primaryColor + '20' }]}>
-                <Text style={[styles.tagText, { color: primaryColor }]}>Sleep Deprived</Text>
+              <View
+                style={[styles.tag, { backgroundColor: primaryColor + "20" }]}
+              >
+                <Text style={[styles.tagText, { color: primaryColor }]}>
+                  Sleep Deprived
+                </Text>
               </View>
             )}
             {item.context.stress && (
-              <View style={[styles.tag, { backgroundColor: primaryColor + '20' }]}>
-                <Text style={[styles.tagText, { color: primaryColor }]}>Stress</Text>
+              <View
+                style={[styles.tag, { backgroundColor: primaryColor + "20" }]}
+              >
+                <Text style={[styles.tagText, { color: primaryColor }]}>
+                  Stress
+                </Text>
               </View>
             )}
           </View>
@@ -205,7 +248,10 @@ export default function HistoryScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor }]}
+      edges={["top"]}
+    >
       <View style={styles.header}>
         <Text style={[styles.title, { color: textColor }]}>History</Text>
         <View style={styles.headerActions}>
@@ -221,10 +267,18 @@ export default function HistoryScreen() {
           )}
           <TouchableOpacity
             onPress={toggleSelectionMode}
-            style={[styles.actionButton, { backgroundColor: isSelectionMode ? primaryColor : cardColor }]}
+            style={[
+              styles.actionButton,
+              { backgroundColor: isSelectionMode ? primaryColor : cardColor },
+            ]}
           >
-            <Text style={[styles.actionButtonText, { color: isSelectionMode ? '#FFFFFF' : textColor }]}>
-              {isSelectionMode ? 'Cancel' : 'Select'}
+            <Text
+              style={[
+                styles.actionButtonText,
+                { color: isSelectionMode ? "#FFFFFF" : textColor },
+              ]}
+            >
+              {isSelectionMode ? "Cancel" : "Select"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -233,7 +287,7 @@ export default function HistoryScreen() {
       {sessions.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={[styles.emptyText, { color: secondaryTextColor }]}>
-            No recordings yet{'\n'}Start recording to see your history
+            No recordings yet{"\n"}Start recording to see your history
           </Text>
         </View>
       ) : (
@@ -243,12 +297,15 @@ export default function HistoryScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={primaryColor} />
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={primaryColor}
+            />
           }
         />
       )}
 
-      {/* Session Detail Modal */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -257,46 +314,105 @@ export default function HistoryScreen() {
       >
         <View style={[styles.modalContainer, { backgroundColor }]}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Session Details</Text>
+            <Text style={[styles.modalTitle, { color: textColor }]}>
+              Session Details
+            </Text>
             <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <Text style={[styles.modalClose, { color: primaryColor }]}>Close</Text>
+              <Text style={[styles.modalClose, { color: primaryColor }]}>
+                Close
+              </Text>
             </TouchableOpacity>
           </View>
-          
+
           {selectedSession && (
             <ScrollView style={styles.modalContent}>
               <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
-                <Text style={[styles.detailLabel, { color: secondaryTextColor }]}>Date & Time</Text>
+                <Text
+                  style={[styles.detailLabel, { color: secondaryTextColor }]}
+                >
+                  Date & Time
+                </Text>
                 <Text style={[styles.detailValue, { color: textColor }]}>
                   {new Date(selectedSession.timestamp).toLocaleString()}
                 </Text>
               </View>
 
               <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
-                <Text style={[styles.detailLabel, { color: secondaryTextColor }]}>Duration</Text>
+                <Text
+                  style={[styles.detailLabel, { color: secondaryTextColor }]}
+                >
+                  Duration
+                </Text>
                 <Text style={[styles.detailValue, { color: textColor }]}>
                   {selectedSession.duration} seconds
                 </Text>
               </View>
 
               <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
-                <Text style={[styles.detailLabel, { color: secondaryTextColor }]}>Statistics</Text>
+                <Text
+                  style={[styles.detailLabel, { color: secondaryTextColor }]}
+                >
+                  Hand tremor likelihood
+                </Text>
+                <Text style={[styles.detailScoreValue, { color: textColor }]}>
+                  {getTremorScore(selectedSession.stats)}/100
+                </Text>
+                <Text
+                  style={[styles.detailScoreSub, { color: secondaryTextColor }]}
+                >
+                  {getTremorScoreLabel(getTremorScore(selectedSession.stats))}
+                </Text>
+              </View>
+
+              <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
+                <Text
+                  style={[styles.detailLabel, { color: secondaryTextColor }]}
+                >
+                  Statistics
+                </Text>
                 <View style={styles.detailStats}>
                   <View style={styles.detailStatItem}>
-                    <Text style={[styles.detailStatLabel, { color: secondaryTextColor }]}>Mean Amplitude</Text>
-                    <Text style={[styles.detailStatValue, { color: textColor }]}>
+                    <Text
+                      style={[
+                        styles.detailStatLabel,
+                        { color: secondaryTextColor },
+                      ]}
+                    >
+                      Mean Amplitude
+                    </Text>
+                    <Text
+                      style={[styles.detailStatValue, { color: textColor }]}
+                    >
                       {selectedSession.stats.meanAmplitude.toFixed(4)}
                     </Text>
                   </View>
                   <View style={styles.detailStatItem}>
-                    <Text style={[styles.detailStatLabel, { color: secondaryTextColor }]}>Variability</Text>
-                    <Text style={[styles.detailStatValue, { color: textColor }]}>
+                    <Text
+                      style={[
+                        styles.detailStatLabel,
+                        { color: secondaryTextColor },
+                      ]}
+                    >
+                      Variability
+                    </Text>
+                    <Text
+                      style={[styles.detailStatValue, { color: textColor }]}
+                    >
                       {selectedSession.stats.variability.toFixed(4)}
                     </Text>
                   </View>
                   <View style={styles.detailStatItem}>
-                    <Text style={[styles.detailStatLabel, { color: secondaryTextColor }]}>Peak Amplitude</Text>
-                    <Text style={[styles.detailStatValue, { color: textColor }]}>
+                    <Text
+                      style={[
+                        styles.detailStatLabel,
+                        { color: secondaryTextColor },
+                      ]}
+                    >
+                      Peak Amplitude
+                    </Text>
+                    <Text
+                      style={[styles.detailStatValue, { color: textColor }]}
+                    >
                       {selectedSession.stats.peakAmplitude.toFixed(4)}
                     </Text>
                   </View>
@@ -304,19 +420,36 @@ export default function HistoryScreen() {
               </View>
 
               {selectedSession.context && (
-                <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
-                  <Text style={[styles.detailLabel, { color: secondaryTextColor }]}>Context</Text>
+                <View
+                  style={[styles.detailCard, { backgroundColor: cardColor }]}
+                >
+                  <Text
+                    style={[styles.detailLabel, { color: secondaryTextColor }]}
+                  >
+                    Context
+                  </Text>
                   {selectedSession.context.caffeine && (
-                    <Text style={[styles.detailValue, { color: textColor }]}>• Caffeine consumed</Text>
+                    <Text style={[styles.detailValue, { color: textColor }]}>
+                      • Caffeine consumed
+                    </Text>
                   )}
                   {selectedSession.context.sleepDeprived && (
-                    <Text style={[styles.detailValue, { color: textColor }]}>• Sleep deprived</Text>
+                    <Text style={[styles.detailValue, { color: textColor }]}>
+                      • Sleep deprived
+                    </Text>
                   )}
                   {selectedSession.context.stress && (
-                    <Text style={[styles.detailValue, { color: textColor }]}>• Feeling stressed</Text>
+                    <Text style={[styles.detailValue, { color: textColor }]}>
+                      • Feeling stressed
+                    </Text>
                   )}
                   {selectedSession.context.notes && (
-                    <Text style={[styles.detailValue, { color: textColor, marginTop: 8 }]}>
+                    <Text
+                      style={[
+                        styles.detailValue,
+                        { color: textColor, marginTop: 8 },
+                      ]}
+                    >
                       Notes: {selectedSession.context.notes}
                     </Text>
                   )}
@@ -335,36 +468,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 20,
   },
   title: {
     fontSize: 36,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: -0.5,
   },
   headerActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
   },
   actionButton: {
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 3,
   },
   actionButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
     letterSpacing: 0.3,
   },
   listContent: {
@@ -375,16 +508,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
   },
   sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 16,
   },
   sessionInfo: {
@@ -392,13 +525,35 @@ const styles = StyleSheet.create({
   },
   sessionDate: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 6,
     letterSpacing: -0.3,
   },
   sessionDuration: {
     fontSize: 15,
-    fontWeight: '400',
+    fontWeight: "400",
+  },
+  tremorScoreRow: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.04)",
+    alignItems: "center",
+  },
+  tremorScoreLabel: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  tremorScoreValue: {
+    fontSize: 24,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  tremorScoreSub: {
+    fontSize: 13,
+    marginTop: 2,
+    fontWeight: "600",
   },
   deleteButton: {
     paddingHorizontal: 14,
@@ -407,34 +562,34 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#3E3E42',
+    borderTopColor: "#3E3E42",
   },
   statItem: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
   },
   statLabel: {
     fontSize: 13,
     marginBottom: 6,
-    fontWeight: '500',
+    fontWeight: "500",
     opacity: 0.7,
   },
   statValue: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: -0.3,
   },
   contextTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginTop: 16,
     gap: 10,
   },
@@ -445,40 +600,40 @@ const styles = StyleSheet.create({
   },
   tagText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 60,
   },
   emptyText: {
     fontSize: 18,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 28,
-    fontWeight: '400',
+    fontWeight: "400",
   },
   modalContainer: {
     flex: 1,
     paddingTop: 60,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#3E3E42',
+    borderBottomColor: "#3E3E42",
   },
   modalTitle: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   modalClose: {
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   modalContent: {
     flex: 1,
@@ -488,7 +643,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -500,6 +655,17 @@ const styles = StyleSheet.create({
   },
   detailValue: {
     fontSize: 17,
+  },
+  detailScoreValue: {
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+    marginTop: 4,
+  },
+  detailScoreSub: {
+    fontSize: 15,
+    marginTop: 4,
+    fontWeight: "600",
   },
   detailStats: {
     marginTop: 8,
@@ -513,6 +679,6 @@ const styles = StyleSheet.create({
   },
   detailStatValue: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

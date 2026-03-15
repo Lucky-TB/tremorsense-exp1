@@ -1,17 +1,9 @@
-// Signal processing utilities for tremor analysis
-
 import { SensorData, RecordingStats } from '@/types';
 
-/**
- * Calculate vector magnitude from X, Y, Z components
- */
 export function calculateMagnitude(x: number, y: number, z: number): number {
   return Math.sqrt(x * x + y * y + z * z);
 }
 
-/**
- * Calculate magnitude array from sensor data
- */
 export function calculateMagnitudeArray(data: SensorData): number[] {
   const magnitudes: number[] = [];
   const length = Math.min(data.x.length, data.y.length, data.z.length);
@@ -23,9 +15,6 @@ export function calculateMagnitudeArray(data: SensorData): number[] {
   return magnitudes;
 }
 
-/**
- * Calculate tremor amplitude (deviation from mean)
- */
 export function calculateTremorAmplitude(magnitude: number[]): number {
   if (magnitude.length === 0) return 0;
   
@@ -34,9 +23,6 @@ export function calculateTremorAmplitude(magnitude: number[]): number {
   return deviations.reduce((sum, val) => sum + val, 0) / deviations.length;
 }
 
-/**
- * Calculate variability (standard deviation)
- */
 export function calculateVariability(magnitude: number[]): number {
   if (magnitude.length === 0) return 0;
   
@@ -45,9 +31,6 @@ export function calculateVariability(magnitude: number[]): number {
   return Math.sqrt(variance);
 }
 
-/**
- * Calculate peak amplitude
- */
 export function calculatePeakAmplitude(magnitude: number[]): number {
   if (magnitude.length === 0) return 0;
   
@@ -56,9 +39,6 @@ export function calculatePeakAmplitude(magnitude: number[]): number {
   return Math.max(...deviations);
 }
 
-/**
- * Calculate statistics from magnitude array
- */
 export function calculateStats(magnitude: number[]): RecordingStats {
   return {
     meanAmplitude: calculateTremorAmplitude(magnitude),
@@ -67,9 +47,6 @@ export function calculateStats(magnitude: number[]): RecordingStats {
   };
 }
 
-/**
- * Smooth data using moving average
- */
 export function smoothData(data: number[], windowSize: number = 5): number[] {
   if (data.length === 0) return [];
   if (windowSize >= data.length) return data;
@@ -88,9 +65,23 @@ export function smoothData(data: number[], windowSize: number = 5): number[] {
   return smoothed;
 }
 
-/**
- * Detect anomalies in magnitude data
- */
+const VARIABILITY_AT_100 = 0.12;
+
+export function getTremorScore(stats: RecordingStats): number {
+  const { variability, meanAmplitude } = stats;
+  const fromVariability = (variability / VARIABILITY_AT_100) * 100;
+  const fromAmplitude = Math.min(30, meanAmplitude * 100);
+  const raw = fromVariability + fromAmplitude * 0.5;
+  return Math.min(100, Math.max(0, Math.round(raw)));
+}
+
+export function getTremorScoreLabel(score: number): 'Low' | 'Moderate' | 'Elevated' | 'High' {
+  if (score <= 25) return 'Low';
+  if (score <= 50) return 'Moderate';
+  if (score <= 75) return 'Elevated';
+  return 'High';
+}
+
 export function detectAnomalies(magnitude: number[], threshold: number = 2): number[] {
   if (magnitude.length === 0) return [];
   
