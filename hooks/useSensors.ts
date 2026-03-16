@@ -1,5 +1,3 @@
-// Custom hook for sensor data collection
-
 import { useState, useEffect, useRef } from 'react';
 import { Accelerometer, Gyroscope } from 'expo-sensors';
 import { SamplingRate } from '@/types';
@@ -28,7 +26,6 @@ export function useSensors(samplingRate: SamplingRate = 'medium', enabled: boole
   const interval = SAMPLING_RATES[samplingRate];
 
   useEffect(() => {
-    // Check availability
     Accelerometer.isAvailableAsync().then(accelAvailable => {
       Gyroscope.isAvailableAsync().then(gyroAvailable => {
         setIsAvailable(accelAvailable && gyroAvailable);
@@ -43,11 +40,9 @@ export function useSensors(samplingRate: SamplingRate = 'medium', enabled: boole
       return;
     }
 
-    // Set update intervals
     Accelerometer.setUpdateInterval(interval);
     Gyroscope.setUpdateInterval(interval);
 
-    // Subscribe to sensors
     const accelSubscription = Accelerometer.addListener(data => {
       setAccelerometerData(data);
       accelDataRef.current = data;
@@ -58,7 +53,6 @@ export function useSensors(samplingRate: SamplingRate = 'medium', enabled: boole
       gyroDataRef.current = data;
     });
 
-    // Collect readings
     const collectionInterval = setInterval(() => {
       if (accelDataRef.current && gyroDataRef.current) {
         const reading: SensorReading = {

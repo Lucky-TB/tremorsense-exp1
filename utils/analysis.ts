@@ -1,11 +1,6 @@
-// AI-style analysis utilities (rule-based, transparent)
-
 import { RecordingSession, TrendAnalysis, StabilityClassification } from '@/types';
 import { calculateVariability, detectAnomalies } from './signalProcessing';
 
-/**
- * Classify stability based on variability and trends
- */
 export function classifyStability(
   currentVariability: number,
   baselineVariability: number,
@@ -24,25 +19,18 @@ export function classifyStability(
   }
 }
 
-/**
- * Calculate baseline variability from historical sessions
- */
 export function calculateBaseline(sessions: RecordingSession[]): number {
   if (sessions.length === 0) return 0;
-  
-  const variabilities = sessions.map(s => s.stats.variability);
+
+  const variabilities = sessions.map((s) => s.stats.variability);
   const sorted = variabilities.sort((a, b) => a - b);
   const medianIndex = Math.floor(sorted.length / 2);
-  
-  // Use median to avoid outliers
+
   return sorted.length % 2 === 0
     ? (sorted[medianIndex - 1] + sorted[medianIndex]) / 2
     : sorted[medianIndex];
 }
 
-/**
- * Detect trend in recent sessions
- */
 export function detectTrend(sessions: RecordingSession[], days: number = 7): 'stable' | 'increasing' | 'decreasing' {
   if (sessions.length < 3) return 'stable';
   
@@ -67,9 +55,6 @@ export function detectTrend(sessions: RecordingSession[], days: number = 7): 'st
   return 'stable';
 }
 
-/**
- * Generate trend analysis
- */
 export function generateTrendAnalysis(sessions: RecordingSession[]): TrendAnalysis {
   if (sessions.length === 0) {
     return {
@@ -93,19 +78,16 @@ export function generateTrendAnalysis(sessions: RecordingSession[]): TrendAnalys
     baseline,
     trend
   );
-  
-  // Calculate stability score (0-100, higher is more stable)
+
   const variabilityRatio = latest.stats.variability / (baseline || 1);
   const stabilityScore = Math.max(0, Math.min(100, 100 - (variabilityRatio - 1) * 50));
-  
-  // Detect anomalies
+
   const anomalies: string[] = [];
   const anomalyIndices = detectAnomalies(latest.magnitude);
   if (anomalyIndices.length > latest.magnitude.length * 0.1) {
     anomalies.push('Unusual motion patterns detected in recent recording');
   }
-  
-  // Generate summary
+
   const summaries: string[] = [];
   if (trend === 'increasing') {
     summaries.push('Your motion variability has increased slightly over the past week.');
@@ -121,8 +103,7 @@ export function generateTrendAnalysis(sessions: RecordingSession[]): TrendAnalys
       summaries.push('Recent recordings show higher variability compared to your baseline.');
     }
   }
-  
-  // Find correlations with context
+
   const correlations: TrendAnalysis['correlations'] = [];
   
   const caffeineSessions = sessions.filter(s => s.context?.caffeine);
@@ -168,9 +149,6 @@ export function generateTrendAnalysis(sessions: RecordingSession[]): TrendAnalys
   };
 }
 
-/**
- * Get sessions grouped by day
- */
 export function groupSessionsByDay(sessions: RecordingSession[]): Map<string, RecordingSession[]> {
   const grouped = new Map<string, RecordingSession[]>();
   
@@ -187,9 +165,6 @@ export function groupSessionsByDay(sessions: RecordingSession[]): Map<string, Re
   return grouped;
 }
 
-/**
- * Calculate rolling average
- */
 export function calculateRollingAverage(
   sessions: RecordingSession[],
   windowDays: number = 7

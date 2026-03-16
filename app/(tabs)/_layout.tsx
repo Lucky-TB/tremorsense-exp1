@@ -44,8 +44,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="insights"
         options={{
-          title: 'Insights',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="lightbulb" color={color} />,
+          title: 'Chatbot',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="bubble.left.and.bubble.right" color={color} />,
         }}
       />
       <Tabs.Screen

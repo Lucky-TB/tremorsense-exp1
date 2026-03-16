@@ -1,11 +1,10 @@
-// Line chart component using react-native-chart-kit
-
 import React from 'react';
 import { Dimensions, View, Text, StyleSheet } from 'react-native';
 import { LineChart as RNLineChart } from 'react-native-chart-kit';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 const screenWidth = Dimensions.get('window').width;
+const DEFAULT_CHART_WIDTH = Math.min(screenWidth - 72, 320);
 
 interface LineChartProps {
   data: number[];
@@ -14,6 +13,7 @@ interface LineChartProps {
   yAxisSuffix?: string;
   color?: string;
   height?: number;
+  width?: number;
 }
 
 export function LineChart({
@@ -23,6 +23,7 @@ export function LineChart({
   yAxisSuffix = '',
   color,
   height = 220,
+  width = DEFAULT_CHART_WIDTH,
 }: LineChartProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -31,8 +32,7 @@ export function LineChart({
   const textColor = isDark ? '#FFFFFF' : '#000000';
   const backgroundColor = isDark ? '#1C1C1E' : '#FFFFFF';
   const gridColor = isDark ? '#2C2C2E' : '#E5E5EA';
-  
-  // Prepare data for chart
+
   const chartData = {
     labels: labels || data.map((_, i) => ''),
     datasets: [
@@ -82,7 +82,7 @@ export function LineChart({
       {title && <Text style={[styles.title, { color: textColor }]}>{title}</Text>}
       <RNLineChart
         data={chartData}
-        width={screenWidth - 40}
+        width={width}
         height={height}
         yAxisSuffix={yAxisSuffix}
         chartConfig={chartConfig}

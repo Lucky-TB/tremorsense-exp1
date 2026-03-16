@@ -1,397 +1,253 @@
-// Graphs tab - Multiple data visualizations
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  Picker,
+  Modal,
+  Pressable,
+  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { RecordingSession } from '@/types';
-import { loadAllSessions } from '@/utils/storage';
-import { LineChart } from '@/components/LineChart';
 import { useFocusEffect } from '@react-navigation/native';
-import { calculateRollingAverage, groupSessionsByDay } from '@/utils/analysis';
-import { smoothData } from '@/utils/signalProcessing';
+import { LineChart } from '@/components/LineChart';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { loadAllSessions } from '@/utils/storage';
+import { getTremorScore } from '@/utils/signalProcessing';
+import type { RecordingSession } from '@/types';
+
+const PURPLE = '#6B4EAA';
+const PURPLE_LIGHT = '#9B7BC9';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CHART_WIDTH = Math.min(SCREEN_WIDTH - 72, 320);
+
+const MAX_POINTS = 14;
+
+function formatLabel(session: RecordingSession, index: number, total: number): string {
+  const date = new Date(session.timestamp);
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  return `${m}/${d}`;
+}
 
 export default function GraphsScreen() {
+  const [modalVisible, setModalVisible] = useState(false);
+  const [sessions, setSessions] = useState<RecordingSession[]>([]);
+  const [loading, setLoading] = useState(true);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  
-  const [sessions, setSessions] = useState<RecordingSession[]>([]);
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [sensorType, setSensorType] = useState<'accelerometer' | 'gyroscope'>('accelerometer');
-  const [axis, setAxis] = useState<'magnitude' | 'x' | 'y' | 'z'>('magnitude');
-  const [smooth, setSmooth] = useState(false);
-  const [viewType, setViewType] = useState<'session' | 'trend' | 'daily'>('session');
+  const BG = isDark ? '#1a1520' : '#F5F2FA';
+  const CARD = isDark ? '#2a2433' : '#FFFFFF';
+  const textColor = isDark ? '#FFFFFF' : '#1C1C1E';
+  const secondaryColor = isDark ? '#B8B0C4' : '#6D6D72';
 
   useFocusEffect(
     useCallback(() => {
-      loadAllSessions().then(loaded => {
-        setSessions(loaded.sort((a, b) => b.timestamp - a.timestamp));
-        if (loaded.length > 0 && !selectedSessionId) {
-          setSelectedSessionId(loaded[0].id);
-        }
-      });
-    }, [selectedSessionId])
+      let cancelled = false;
+      setLoading(true);
+      loadAllSessions()
+        .then((loaded) => {
+          if (!cancelled) {
+            const sorted = [...loaded].sort((a, b) => a.timestamp - b.timestamp);
+            setSessions(sorted);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
   );
 
-  const selectedSession = sessions.find(s => s.id === selectedSessionId);
-  const backgroundColor = isDark ? '#000000' : '#F2F2F7';
-  const cardColor = isDark ? '#1C1C1E' : '#FFFFFF';
-  const textColor = isDark ? '#FFFFFF' : '#000000';
-  const secondaryTextColor = isDark ? '#98989D' : '#6D6D70';
-  const primaryColor = isDark ? '#4A9EFF' : '#007AFF';
+  const chartSessions = sessions.slice(-MAX_POINTS);
+  const labels = chartSessions.map((s, i) => formatLabel(s, i, chartSessions.length));
+  const tremorData = chartSessions.map((s) => getTremorScore(s.stats));
+  const stabilityData = tremorData.map((t) => Math.round(100 - t));
+  const avgTremor =
+    tremorData.length > 0
+      ? Math.round(tremorData.reduce((a, b) => a + b, 0) / tremorData.length)
+      : 0;
+  const lastScore = tremorData.length > 0 ? tremorData[tremorData.length - 1] : null;
 
-  const getSessionData = (session: RecordingSession | undefined) => {
-    if (!session) return [];
-    
-    const sensor = sensorType === 'accelerometer' ? session.accelerometer : session.gyroscope;
-    
-    if (axis === 'magnitude') {
-      return session.magnitude;
-    } else if (axis === 'x') {
-      return sensor.x;
-    } else if (axis === 'y') {
-      return sensor.y;
-    } else {
-      return sensor.z;
-    }
-  };
-
-  const getTrendData = () => {
-    if (sessions.length === 0) return { labels: [], data: [] };
-    
-    const rolling = calculateRollingAverage(sessions, 7);
-    return {
-      labels: rolling.map(r => {
-        const date = new Date(r.date);
-        return `${date.getMonth() + 1}/${date.getDate()}`;
-      }),
-      data: rolling.map(r => r.average),
-    };
-  };
-
-  const getDailyData = () => {
-    if (sessions.length === 0) return { labels: [], data: [] };
-    
-    const grouped = groupSessionsByDay(sessions);
-    const sortedDays = Array.from(grouped.keys()).sort();
-    
-    const dailyAverages = sortedDays.map(day => {
-      const daySessions = grouped.get(day) || [];
-      const avg = daySessions.reduce((sum, s) => sum + s.stats.variability, 0) / daySessions.length;
-      return avg;
-    });
-    
-    return {
-      labels: sortedDays.map(day => {
-        const date = new Date(day);
-        return `${date.getMonth() + 1}/${date.getDate()}`;
-      }),
-      data: dailyAverages,
-    };
-  };
-
-  const renderSessionGraph = () => {
-    if (!selectedSession) {
-      return (
-        <View style={[styles.emptyContainer, { backgroundColor: cardColor }]}>
-          <Text style={[styles.emptyText, { color: secondaryTextColor }]}>
-            No session selected
-          </Text>
-        </View>
-      );
-    }
-
-    let data = getSessionData(selectedSession);
-    if (smooth && data.length > 0) {
-      data = smoothData(data, 5);
-    }
-
-    const labels = data.map((_, i) => {
-      if (data.length <= 20) return String(i);
-      if (i % Math.floor(data.length / 10) === 0) return String(i);
-      return '';
-    });
-
-    return (
-      <LineChart
-        data={data}
-        labels={labels}
-        title={`${sensorType === 'accelerometer' ? 'Accelerometer' : 'Gyroscope'} - ${axis.toUpperCase()} Axis`}
-        yAxisSuffix=""
-        height={250}
-      />
-    );
-  };
-
-  const renderTrendGraph = () => {
-    const trendData = getTrendData();
-    
-    if (trendData.data.length === 0) {
-      return (
-        <View style={[styles.emptyContainer, { backgroundColor: cardColor }]}>
-          <Text style={[styles.emptyText, { color: secondaryTextColor }]}>
-            Not enough data for trend analysis
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <LineChart
-        data={trendData.data}
-        labels={trendData.labels}
-        title="7-Day Rolling Average Variability"
-        yAxisSuffix=""
-        height={250}
-      />
-    );
-  };
-
-  const renderDailyGraph = () => {
-    const dailyData = getDailyData();
-    
-    if (dailyData.data.length === 0) {
-      return (
-        <View style={[styles.emptyContainer, { backgroundColor: cardColor }]}>
-          <Text style={[styles.emptyText, { color: secondaryTextColor }]}>
-            No data available
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <LineChart
-        data={dailyData.data}
-        labels={dailyData.labels}
-        title="Daily Average Variability"
-        yAxisSuffix=""
-        height={250}
-      />
-    );
-  };
+  const hasData = chartSessions.length > 0;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: BG }]} edges={['top']}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={[styles.title, { color: textColor }]}>Graphs</Text>
+          <Text style={[styles.title, { color: PURPLE }]}>Your tremor over time</Text>
+          <Text style={[styles.subtitle, { color: secondaryColor }]}>
+            {hasData
+              ? 'Scores from each check (0 = steadier, 100 = more shaking). Run a check on Record to add data.'
+              : 'Run "Start checking process" on the Record tab to add your first check. Your tremor score (0–100) will appear here.'}
+          </Text>
         </View>
 
-      {/* View Type Selector */}
-      <View style={[styles.selectorContainer, { backgroundColor: cardColor }]}>
-        <Text style={[styles.selectorLabel, { color: textColor }]}>View Type</Text>
-        <View style={styles.selectorRow}>
-          <TouchableOpacity
-            style={[
-              styles.selectorButton,
-              {
-                backgroundColor: viewType === 'session' ? primaryColor : 'transparent',
-                borderColor: primaryColor,
-              },
-            ]}
-            onPress={() => setViewType('session')}
-          >
-            <Text
-              style={[
-                styles.selectorButtonText,
-                { color: viewType === 'session' ? '#FFFFFF' : textColor },
-              ]}
-            >
-              Session
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.selectorButton,
-              {
-                backgroundColor: viewType === 'trend' ? primaryColor : 'transparent',
-                borderColor: primaryColor,
-              },
-            ]}
-            onPress={() => setViewType('trend')}
-          >
-            <Text
-              style={[
-                styles.selectorButtonText,
-                { color: viewType === 'trend' ? '#FFFFFF' : textColor },
-              ]}
-            >
-              Trend
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.selectorButton,
-              {
-                backgroundColor: viewType === 'daily' ? primaryColor : 'transparent',
-                borderColor: primaryColor,
-              },
-            ]}
-            onPress={() => setViewType('daily')}
-          >
-            <Text
-              style={[
-                styles.selectorButtonText,
-                { color: viewType === 'daily' ? '#FFFFFF' : textColor },
-              ]}
-            >
-              Daily
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Session-specific controls */}
-      {viewType === 'session' && (
-        <>
-          {/* Session Selector */}
-          {sessions.length > 0 && (
-            <View style={[styles.controlContainer, { backgroundColor: cardColor }]}>
-              <Text style={[styles.controlLabel, { color: textColor }]}>Select Session</Text>
-              <View style={[styles.pickerContainer, { backgroundColor: backgroundColor }]}>
-                <ScrollView style={styles.pickerScroll}>
-                  {sessions.map(session => (
-                    <TouchableOpacity
-                      key={session.id}
-                      style={[
-                        styles.pickerOption,
-                        {
-                          backgroundColor: selectedSessionId === session.id ? primaryColor : 'transparent',
-                        },
-                      ]}
-                      onPress={() => setSelectedSessionId(session.id)}
-                    >
-                      <Text
-                        style={[
-                          styles.pickerOptionText,
-                          {
-                            color:
-                              selectedSessionId === session.id ? '#FFFFFF' : textColor,
-                          },
-                        ]}
-                      >
-                        {new Date(session.timestamp).toLocaleString()}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={PURPLE} />
+            <Text style={[styles.loadingText, { color: secondaryColor }]}>Loading…</Text>
+          </View>
+        ) : hasData ? (
+          <>
+            <View style={[styles.summaryCard, { backgroundColor: CARD }]}>
+              <Text style={[styles.summaryTitle, { color: textColor }]}>Summary</Text>
+              <View style={styles.summaryRow}>
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryValue, { color: PURPLE }]}>
+                    {lastScore != null ? `${lastScore}/100` : '—'}
+                  </Text>
+                  <Text style={[styles.summaryLabel, { color: secondaryColor }]}>
+                    Latest score
+                  </Text>
+                </View>
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryValue, { color: textColor }]}>
+                    {avgTremor}/100
+                  </Text>
+                  <Text style={[styles.summaryLabel, { color: secondaryColor }]}>
+                    Average
+                  </Text>
+                </View>
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryValue, { color: textColor }]}>
+                    {chartSessions.length}
+                  </Text>
+                  <Text style={[styles.summaryLabel, { color: secondaryColor }]}>
+                    Checks shown
+                  </Text>
+                </View>
               </View>
             </View>
-          )}
 
-          {/* Sensor Type Selector */}
-          <View style={[styles.controlContainer, { backgroundColor: cardColor }]}>
-            <Text style={[styles.controlLabel, { color: textColor }]}>Sensor Type</Text>
-            <View style={styles.selectorRow}>
-              <TouchableOpacity
-                style={[
-                  styles.selectorButton,
-                  {
-                    backgroundColor: sensorType === 'accelerometer' ? primaryColor : 'transparent',
-                    borderColor: primaryColor,
-                  },
-                ]}
-                onPress={() => setSensorType('accelerometer')}
-              >
-                <Text
-                  style={[
-                    styles.selectorButtonText,
-                    { color: sensorType === 'accelerometer' ? '#FFFFFF' : textColor },
-                  ]}
-                >
-                  Accelerometer
+            <Pressable
+              style={({ pressed }) => [
+                styles.openModalCard,
+                { backgroundColor: CARD },
+                pressed && styles.openModalCardPressed,
+              ]}
+              onPress={() => setModalVisible(true)}
+            >
+              <View style={styles.openModalContent}>
+                <Text style={[styles.openModalTitle, { color: textColor }]}>
+                  View all graphs
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.selectorButton,
-                  {
-                    backgroundColor: sensorType === 'gyroscope' ? primaryColor : 'transparent',
-                    borderColor: primaryColor,
-                  },
-                ]}
-                onPress={() => setSensorType('gyroscope')}
-              >
-                <Text
-                  style={[
-                    styles.selectorButtonText,
-                    { color: sensorType === 'gyroscope' ? '#FFFFFF' : textColor },
-                  ]}
-                >
-                  Gyroscope
+                <Text style={[styles.openModalDesc, { color: secondaryColor }]}>
+                  Tremor score, stability & trend
                 </Text>
-              </TouchableOpacity>
-            </View>
+                <View style={styles.openModalBadge}>
+                  <Text style={styles.openModalBadgeText}>3 charts</Text>
+                </View>
+              </View>
+              <Text style={[styles.openModalArrow, { color: PURPLE }]}>›</Text>
+            </Pressable>
+          </>
+        ) : (
+          <View style={[styles.emptyCard, { backgroundColor: CARD }]}>
+            <Text style={[styles.emptyTitle, { color: textColor }]}>No data yet</Text>
+            <Text style={[styles.emptyText, { color: secondaryColor }]}>
+              Go to Record and tap "Start checking process" to record your first check. Your tremor score (0–100) will show here and in History.
+            </Text>
           </View>
+        )}
 
-          {/* Axis Selector */}
-          <View style={[styles.controlContainer, { backgroundColor: cardColor }]}>
-            <Text style={[styles.controlLabel, { color: textColor }]}>Axis</Text>
-            <View style={styles.selectorRow}>
-              {(['magnitude', 'x', 'y', 'z'] as const).map(ax => (
-                <TouchableOpacity
-                  key={ax}
-                  style={[
-                    styles.selectorButton,
-                    {
-                      backgroundColor: axis === ax ? primaryColor : 'transparent',
-                      borderColor: primaryColor,
-                    },
-                  ]}
-                  onPress={() => setAxis(ax)}
-                >
-                  <Text
-                    style={[
-                      styles.selectorButtonText,
-                      { color: axis === ax ? '#FFFFFF' : textColor },
-                    ]}
-                  >
-                    {ax.toUpperCase()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Smooth Toggle */}
-          <View style={[styles.controlContainer, { backgroundColor: cardColor }]}>
-            <View style={styles.toggleRow}>
-              <Text style={[styles.controlLabel, { color: textColor }]}>Smooth Data</Text>
-              <TouchableOpacity
-                style={[
-                  styles.toggleButton,
-                  {
-                    backgroundColor: smooth ? primaryColor : '#3E3E42',
-                  },
-                ]}
-                onPress={() => setSmooth(!smooth)}
-              >
-                <Text style={styles.toggleButtonText}>{smooth ? 'ON' : 'OFF'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </>
-      )}
-
-      {/* Graph Display */}
-      <View style={styles.graphContainer}>
-        {viewType === 'session' && renderSessionGraph()}
-        {viewType === 'trend' && renderTrendGraph()}
-        {viewType === 'daily' && renderDailyGraph()}
-      </View>
+        <View style={[styles.legendCard, { backgroundColor: CARD }]}>
+          <Text style={[styles.legendTitle, { color: textColor }]}>How to read the score</Text>
+          <Text style={[styles.legendText, { color: secondaryColor }]}>
+            • 0–25: Low (hand was steady){'\n'}
+            • 26–50: Moderate{'\n'}
+            • 51–75: Elevated{'\n'}
+            • 76–100: High (more shaking detected)
+          </Text>
+        </View>
       </ScrollView>
+
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <SafeAreaView style={[styles.modalRoot, { backgroundColor: BG }]} edges={['top']}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: PURPLE }]}>All graphs</Text>
+            <Pressable
+              onPress={() => setModalVisible(false)}
+              style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={[styles.modalCloseText, { color: PURPLE }]}>Done</Text>
+            </Pressable>
+          </View>
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {!hasData ? (
+              <Text style={[styles.noChartsText, { color: secondaryColor }]}>
+                Run a check on Record to see your graphs.
+              </Text>
+            ) : (
+              <>
+                <View style={[styles.chartCard, { backgroundColor: CARD }]}>
+                  <LineChart
+                    data={tremorData}
+                    labels={labels}
+                    title="Tremor score (0–100)"
+                    yAxisSuffix=""
+                    color={PURPLE}
+                    height={200}
+                    width={CHART_WIDTH}
+                  />
+                  <Text style={[styles.chartHint, { color: secondaryColor }]}>
+                    Your tremor likelihood for each check. Lower = steadier, higher = more shaking.
+                  </Text>
+                </View>
+
+                <View style={[styles.chartCard, { backgroundColor: CARD }]}>
+                  <LineChart
+                    data={stabilityData}
+                    labels={labels}
+                    title="Stability (0–100)"
+                    yAxisSuffix=""
+                    color={PURPLE_LIGHT}
+                    height={200}
+                    width={CHART_WIDTH}
+                  />
+                  <Text style={[styles.chartHint, { color: secondaryColor }]}>
+                    Same data as stability: higher = steadier hand.
+                  </Text>
+                </View>
+
+                <View style={[styles.chartCard, { backgroundColor: CARD }]}>
+                  <LineChart
+                    data={chartSessions.map((s) =>
+                      Math.min(100, Math.round((s.stats.variability / 0.12) * 100))
+                    )}
+                    labels={labels}
+                    title="Shake intensity (0–100)"
+                    yAxisSuffix=""
+                    color={PURPLE}
+                    height={200}
+                    width={CHART_WIDTH}
+                  />
+                  <Text style={[styles.chartHint, { color: secondaryColor }]}>
+                    Same scale as tremor score. Lower = steadier.
+                  </Text>
+                </View>
+              </>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -403,123 +259,193 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  contentContainer: {
+  content: {
     padding: 20,
     paddingBottom: 40,
   },
   header: {
-    marginBottom: 28,
-    marginTop: 8,
+    marginBottom: 20,
   },
   title: {
-    fontSize: 36,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     letterSpacing: -0.5,
+    marginBottom: 8,
   },
-  selectorContainer: {
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  loadingWrap: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 16,
+  },
+  summaryCard: {
     borderRadius: 20,
     padding: 20,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     elevation: 3,
   },
-  selectorLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    letterSpacing: -0.3,
+  summaryTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 14,
   },
-  selectorRow: {
+  summaryRow: {
     flexDirection: 'row',
-    gap: 10,
-    flexWrap: 'wrap',
+    justifyContent: 'space-around',
   },
-  selectorButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    minWidth: 90,
+  summaryItem: {
     alignItems: 'center',
   },
-  selectorButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.2,
+  summaryValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
-  controlContainer: {
+  summaryLabel: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  emptyCard: {
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  openModalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderRadius: 20,
     padding: 20,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     elevation: 3,
   },
-  controlLabel: {
+  openModalCardPressed: {
+    opacity: 0.9,
+  },
+  openModalContent: {
+    flex: 1,
+  },
+  openModalTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    letterSpacing: -0.3,
+    fontWeight: '700',
+    marginBottom: 4,
   },
-  pickerContainer: {
-    borderRadius: 16,
-    maxHeight: 200,
-    borderWidth: 1.5,
-    borderColor: '#3E3E42',
-    overflow: 'hidden',
+  openModalDesc: {
+    fontSize: 14,
+    marginBottom: 8,
   },
-  pickerScroll: {
-    maxHeight: 200,
-  },
-  pickerOption: {
-    padding: 14,
+  openModalBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: PURPLE,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 10,
-    margin: 6,
   },
-  pickerOptionText: {
+  openModalBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  openModalArrow: {
+    fontSize: 28,
+    fontWeight: '300',
+    marginLeft: 12,
+  },
+  legendCard: {
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  legendTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  legendText: {
     fontSize: 15,
-    fontWeight: '500',
+    lineHeight: 22,
   },
-  toggleRow: {
+  modalRoot: {
+    flex: 1,
+  },
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  toggleButton: {
     paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(107,78,170,0.2)',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  modalCloseBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  modalCloseText: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  modalScroll: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  noChartsText: {
+    fontSize: 16,
+    textAlign: 'center',
+    paddingVertical: 40,
+  },
+  chartCard: {
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     elevation: 3,
   },
-  toggleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  graphContainer: {
-    marginTop: 12,
-  },
-  emptyContainer: {
-    borderRadius: 20,
-    padding: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 280,
-  },
-  emptyText: {
-    fontSize: 17,
+  chartHint: {
+    fontSize: 12,
+    marginTop: 10,
     textAlign: 'center',
-    lineHeight: 24,
-    fontWeight: '400',
   },
 });

@@ -1,5 +1,3 @@
-// Settings tab - Configuration and data management
-
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -14,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTheme, type ThemePreference } from '@/context/ThemeContext';
 import { AppSettings, SamplingRate } from '@/types';
 import {
   loadSettings,
@@ -23,13 +22,16 @@ import {
   exportSessionsAsCSV,
   loadAllSessions,
 } from '@/utils/storage';
+import { router } from 'expo-router';
+import { signOut } from 'firebase/auth';
+import { auth } from '@/config/firebase';
 import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
 export default function SettingsScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { theme, preference, setPreference } = useTheme();
+  const isDark = theme === 'dark';
   
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
@@ -104,6 +106,26 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Log out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            if (auth) {
+              await signOut(auth);
+            }
+            router.replace('/sign-in');
+          },
+        },
+      ]
+    );
+  };
+
   const handleClearData = () => {
     Alert.alert(
       'Clear All Data',
@@ -125,9 +147,9 @@ export default function SettingsScreen() {
 
   if (!settings) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#000000' : '#F2F2F7' }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#1a1520' : '#F5F2FA' }]} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+          <Text style={[styles.loadingText, { color: isDark ? '#FFFFFF' : '#6B4EAA' }]}>
             Loading...
           </Text>
         </View>
@@ -135,11 +157,12 @@ export default function SettingsScreen() {
     );
   }
 
-  const backgroundColor = isDark ? '#000000' : '#F2F2F7';
-  const cardColor = isDark ? '#1C1C1E' : '#FFFFFF';
-  const textColor = isDark ? '#FFFFFF' : '#000000';
-  const secondaryTextColor = isDark ? '#98989D' : '#6D6D70';
-  const primaryColor = isDark ? '#4A9EFF' : '#007AFF';
+  const PURPLE = '#6B4EAA';
+  const backgroundColor = isDark ? '#1a1520' : '#F5F2FA';
+  const cardColor = isDark ? '#2a2433' : '#FFFFFF';
+  const textColor = isDark ? '#FFFFFF' : '#1C1C1E';
+  const secondaryTextColor = isDark ? '#B8B0C4' : '#6D6D72';
+  const primaryColor = PURPLE;
   const dangerColor = '#FF3B30';
 
   const SamplingRateButton = ({ rate, label }: { rate: SamplingRate; label: string }) => (
@@ -196,10 +219,9 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={[styles.title, { color: textColor }]}>Settings</Text>
+          <Text style={[styles.title, { color: primaryColor }]}>Settings</Text>
         </View>
 
-        {/* Recording Settings */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Recording Settings</Text>
 
@@ -223,23 +245,43 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Appearance */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Appearance</Text>
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: textColor }]}>Dark Mode</Text>
-            <Text style={[styles.settingDescription, { color: secondaryTextColor }]}>
-              Follows system settings
-            </Text>
+          <Text style={[styles.settingLabel, { color: textColor }]}>Theme</Text>
+          <View style={styles.buttonRow}>
+            {(['light', 'dark', 'auto'] as const).map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={[
+                  styles.rateButton,
+                  {
+                    backgroundColor: preference === opt ? primaryColor : 'transparent',
+                    borderColor: primaryColor,
+                  },
+                ]}
+                onPress={() => setPreference(opt)}
+              >
+                <Text
+                  style={[
+                    styles.rateButtonText,
+                    { color: preference === opt ? '#FFFFFF' : textColor },
+                  ]}
+                >
+                  {opt === 'light' ? 'Light' : opt === 'dark' ? 'Dark' : 'System'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
+          <Text style={[styles.settingDescription, { color: secondaryTextColor, marginTop: 8 }]}>
+            {preference === 'auto' ? 'Following system light/dark' : `${preference === 'dark' ? 'Dark' : 'Light'} mode`}
+          </Text>
         </View>
 
-        {/* Data Management */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Data Management</Text>
 
           <TouchableOpacity
-            style={styles.actionButton}
+            style={[styles.actionButton, { borderBottomColor: isDark ? '#3d3548' : '#E8E4F0' }]}
             onPress={handleExportJSON}
           >
             <Text style={[styles.actionButtonText, { color: primaryColor }]}>
@@ -248,7 +290,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.actionButton}
+            style={[styles.actionButton, { borderBottomColor: isDark ? '#3d3548' : '#E8E4F0' }]}
             onPress={handleExportCSV}
           >
             <Text style={[styles.actionButtonText, { color: primaryColor }]}>
@@ -266,11 +308,10 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Privacy & Ethics */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>Privacy & Ethics</Text>
           <TouchableOpacity
-            style={styles.actionButton}
+            style={[styles.actionButton, { borderBottomColor: isDark ? '#3d3548' : '#E8E4F0' }]}
             onPress={() => setPrivacyModalVisible(true)}
           >
             <Text style={[styles.actionButtonText, { color: primaryColor }]}>
@@ -279,7 +320,6 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* App Info */}
         <View style={[styles.section, { backgroundColor: cardColor }]}>
           <Text style={[styles.sectionTitle, { color: textColor }]}>About</Text>
           <Text style={[styles.infoText, { color: secondaryTextColor }]}>
@@ -289,9 +329,18 @@ export default function SettingsScreen() {
             A motion tracking and visualization app
           </Text>
         </View>
+
+        <TouchableOpacity
+          style={[styles.logoutButton, { backgroundColor: cardColor }]}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.logoutButtonText, { color: dangerColor }]}>
+            Log out
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
 
-      {/* Privacy Modal */}
       <Modal
         visible={privacyModalVisible}
         animationType="slide"
@@ -370,7 +419,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
   header: {
     marginBottom: 28,
@@ -449,7 +498,7 @@ const styles = StyleSheet.create({
   actionButton: {
     paddingVertical: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#3E3E42',
+    borderBottomColor: '#E8E4F0',
   },
   dangerButton: {
     borderBottomWidth: 0,
@@ -465,6 +514,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 8,
   },
+  logoutButton: {
+    marginTop: 8,
+    marginBottom: 24,
+    paddingVertical: 18,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  logoutButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
   modalContainer: {
     flex: 1,
     paddingTop: 60,
@@ -475,7 +541,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#3E3E42',
+    borderBottomColor: '#E5E5EA',
   },
   modalTitle: {
     fontSize: 24,
