@@ -27,11 +27,11 @@ export function LineChart({
 }: LineChartProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  
-  const chartColor = color || (isDark ? '#4A9EFF' : '#007AFF');
-  const textColor = isDark ? '#FFFFFF' : '#000000';
-  const backgroundColor = isDark ? '#1C1C1E' : '#FFFFFF';
-  const gridColor = isDark ? '#2C2C2E' : '#E5E5EA';
+
+  const chartColor = color || (isDark ? '#5CC5AB' : '#2D9B8A');
+  const textColor = isDark ? '#E8E4DC' : '#1C1C1E';
+  const backgroundColor = isDark ? '#1A2428' : '#FFFFFF';
+  const gridColor = isDark ? '#2A3438' : '#E5E5E0';
 
   const chartData = {
     labels: labels || data.map((_, i) => ''),
@@ -48,21 +48,22 @@ export function LineChart({
     backgroundColor: backgroundColor,
     backgroundGradientFrom: backgroundColor,
     backgroundGradientTo: backgroundColor,
-    decimalPlaces: 2,
+    decimalPlaces: 0,
     color: (opacity = 1) => chartColor,
-    labelColor: (opacity = 1) => textColor,
+    labelColor: (opacity = 1) => isDark ? '#8A8A8E' : '#6D6D72',
     style: {
-      borderRadius: 20,
+      borderRadius: 16,
     },
     propsForDots: {
-      r: '4',
-      strokeWidth: '2.5',
+      r: '3.5',
+      strokeWidth: '2',
       stroke: chartColor,
+      fill: isDark ? '#E8E4DC' : '#FFFFFF',
     },
     propsForBackgroundLines: {
       strokeDasharray: '',
       stroke: gridColor,
-      strokeWidth: 1.5,
+      strokeWidth: 0.5,
     },
   };
 
@@ -71,7 +72,7 @@ export function LineChart({
       <View style={[styles.container, { backgroundColor }]}>
         {title && <Text style={[styles.title, { color: textColor }]}>{title}</Text>}
         <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyText, { color: textColor }]}>No data available</Text>
+          <Text style={[styles.emptyText, { color: isDark ? '#8A8A8E' : '#6D6D72' }]}>No data available</Text>
         </View>
       </View>
     );
@@ -79,7 +80,7 @@ export function LineChart({
 
   return (
     <View style={[styles.container, { backgroundColor }]}>
-      {title && <Text style={[styles.title, { color: textColor }]}>{title}</Text>}
+      {title && <Text style={[styles.title, { color: isDark ? '#8A8A8E' : '#6D6D72' }]}>{title}</Text>}
       <RNLineChart
         data={chartData}
         width={width}
@@ -89,7 +90,7 @@ export function LineChart({
         bezier
         style={styles.chart}
         withInnerLines={true}
-        withOuterLines={true}
+        withOuterLines={false}
         withVerticalLines={false}
         withHorizontalLines={true}
       />
@@ -99,19 +100,20 @@ export function LineChart({
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 8,
-    borderRadius: 20,
-    padding: 20,
+    marginVertical: 4,
+    borderRadius: 16,
+    padding: 16,
   },
   title: {
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: '600',
-    marginBottom: 16,
-    letterSpacing: -0.3,
+    marginBottom: 12,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   chart: {
-    marginVertical: 8,
-    borderRadius: 20,
+    marginVertical: 4,
+    borderRadius: 16,
   },
   emptyContainer: {
     height: 220,
@@ -119,8 +121,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 16,
-    opacity: 0.6,
+    fontSize: 15,
     fontWeight: '400',
   },
 });

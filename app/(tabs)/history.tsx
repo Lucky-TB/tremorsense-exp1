@@ -17,18 +17,55 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
+  Pressable,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from '@expo/vector-icons';
+
+function getScoreColor(score: number): string {
+  if (score <= 25) return '#5CC5AB';
+  if (score <= 50) return '#C4A46C';
+  if (score <= 75) return '#E8A44C';
+  return '#E85D5D';
+}
+
+function getScoreStatus(score: number): string {
+  if (score <= 25) return 'OPTIMAL';
+  if (score <= 50) return 'GOOD';
+  if (score <= 75) return 'FAIR';
+  return 'ATTENTION';
+}
+
+function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const pct = Math.min((value / max) * 100, 100);
+  return (
+    <View style={miniStyles.track}>
+      <View style={[miniStyles.fill, { width: `${pct}%`, backgroundColor: color }]} />
+    </View>
+  );
+}
+
+const miniStyles = StyleSheet.create({
+  track: {
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+    marginTop: 6,
+  },
+  fill: {
+    height: '100%',
+    borderRadius: 1.5,
+  },
+});
 
 export default function HistoryScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
   const [sessions, setSessions] = useState<RecordingSession[]>([]);
-  const [selectedSession, setSelectedSession] =
-    useState<RecordingSession | null>(null);
+  const [selectedSession, setSelectedSession] = useState<RecordingSession | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -69,45 +106,36 @@ export default function HistoryScreen() {
   };
 
   const handleDelete = (sessionId: string) => {
-    Alert.alert(
-      "Delete Session",
-      "Are you sure you want to delete this session?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            await deleteSession(sessionId);
-            await loadSessions();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          },
+    Alert.alert("Delete Session", "Are you sure you want to delete this session?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          await deleteSession(sessionId);
+          await loadSessions();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const handleBulkDelete = () => {
     if (selectedIds.size === 0) return;
-
-    Alert.alert(
-      "Delete Sessions",
-      `Are you sure you want to delete ${selectedIds.size} session(s)?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            await deleteSessions(Array.from(selectedIds));
-            setSelectedIds(new Set());
-            setIsSelectionMode(false);
-            await loadSessions();
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          },
+    Alert.alert("Delete Sessions", `Delete ${selectedIds.size} session(s)?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          await deleteSessions(Array.from(selectedIds));
+          setSelectedIds(new Set());
+          setIsSelectionMode(false);
+          await loadSessions();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const toggleSelectionMode = () => {
@@ -116,25 +144,32 @@ export default function HistoryScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const backgroundColor = isDark ? "#000000" : "#F2F2F7";
-  const cardColor = isDark ? "#1C1C1E" : "#FFFFFF";
-  const textColor = isDark ? "#FFFFFF" : "#000000";
-  const secondaryTextColor = isDark ? "#98989D" : "#6D6D70";
-  const primaryColor = isDark ? "#4A9EFF" : "#007AFF";
-  const dangerColor = "#FF3B30";
+  const bg = isDark ? "#0D0D0D" : "#F5F5F0";
+  const cardBg = isDark ? "#1A2428" : "#FFFFFF";
+  const textColor = isDark ? "#E8E4DC" : "#1C1C1E";
+  const secondaryColor = isDark ? "#8A8A8E" : "#6D6D72";
+  const accent = isDark ? "#5CC5AB" : "#2D9B8A";
+  const borderColor = isDark ? "#2A3438" : "#E5E5E0";
+  const dangerColor = "#E85D5D";
 
   const renderSession = ({ item }: { item: RecordingSession }) => {
     const date = new Date(item.timestamp);
     const isSelected = selectedIds.has(item.id);
+    const tremorScore = getTremorScore(item.stats);
+    const scoreColor = getScoreColor(tremorScore);
+    const status = getScoreStatus(tremorScore);
+
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dayStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
     return (
-      <TouchableOpacity
+      <Pressable
         style={[
           styles.sessionCard,
           {
-            backgroundColor: isSelected ? primaryColor + "20" : cardColor,
-            borderColor: isSelected ? primaryColor : "transparent",
-            borderWidth: isSelected ? 2 : 0,
+            backgroundColor: isSelected ? (isDark ? '#1E3A38' : '#E0F5F0') : cardBg,
+            borderColor: isSelected ? accent : 'transparent',
+            borderWidth: isSelected ? 1.5 : 0,
           },
         ]}
         onPress={() => handleSessionPress(item)}
@@ -145,149 +180,115 @@ export default function HistoryScreen() {
           }
         }}
       >
-        <View style={styles.sessionHeader}>
-          <View style={styles.sessionInfo}>
-            <Text style={[styles.sessionDate, { color: textColor }]}>
-              {date.toLocaleDateString()}{" "}
-              {date.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </Text>
-            <Text
-              style={[styles.sessionDuration, { color: secondaryTextColor }]}
-            >
-              {item.duration}s • {item.magnitude.length} samples
-            </Text>
-          </View>
+        {/* Top row: date + delete */}
+        <View style={styles.cardTopRow}>
+          <Text style={[styles.cardDate, { color: secondaryColor }]}>{dayStr} {timeStr}</Text>
           {!isSelectionMode && (
-            <TouchableOpacity
-              onPress={() => handleDelete(item.id)}
-              style={styles.deleteButton}
-            >
-              <Text style={[styles.deleteButtonText, { color: dangerColor }]}>
-                Delete
-              </Text>
-            </TouchableOpacity>
+            <Pressable onPress={() => handleDelete(item.id)} hitSlop={8}>
+              <Ionicons name="trash-outline" size={16} color={isDark ? '#4A4A4E' : '#AEAEB2'} />
+            </Pressable>
+          )}
+          {isSelectionMode && (
+            <View style={[styles.checkCircle, { borderColor: isSelected ? accent : borderColor, backgroundColor: isSelected ? accent : 'transparent' }]}>
+              {isSelected && <Ionicons name="checkmark" size={12} color="#0D0D0D" />}
+            </View>
           )}
         </View>
 
-        <View style={styles.tremorScoreRow}>
-          <Text
-            style={[styles.tremorScoreLabel, { color: secondaryTextColor }]}
-          >
-            Hand tremor likelihood
-          </Text>
-          <Text style={[styles.tremorScoreValue, { color: textColor }]}>
-            {getTremorScore(item.stats)}/100
-          </Text>
-          <Text style={[styles.tremorScoreSub, { color: secondaryTextColor }]}>
-            {getTremorScoreLabel(getTremorScore(item.stats))}
-          </Text>
+        {/* Score hero row */}
+        <View style={styles.cardScoreRow}>
+          <View style={styles.cardScoreLeft}>
+            <Text style={[styles.cardScoreValue, { color: textColor }]}>{tremorScore}</Text>
+            <View style={styles.cardScoreMeta}>
+              <Text style={[styles.cardScoreLabel, { color: scoreColor }]}>{status}</Text>
+              <Text style={[styles.cardScoreSub, { color: secondaryColor }]}>Tremor Score</Text>
+            </View>
+          </View>
+          <View style={[styles.scoreDot, { backgroundColor: scoreColor }]} />
         </View>
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>
-              Amplitude
-            </Text>
-            <Text style={[styles.statValue, { color: textColor }]}>
-              {item.stats.meanAmplitude.toFixed(3)}
-            </Text>
+
+        {/* Mini progress bar */}
+        <MiniBar value={tremorScore} max={100} color={scoreColor} />
+
+        {/* Stats row */}
+        <View style={styles.cardStatsRow}>
+          <View style={styles.cardStatItem}>
+            <Text style={[styles.cardStatValue, { color: textColor }]}>{item.stats.meanAmplitude.toFixed(3)}</Text>
+            <Text style={[styles.cardStatLabel, { color: secondaryColor }]}>Amplitude</Text>
           </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>
-              Variability
-            </Text>
-            <Text style={[styles.statValue, { color: textColor }]}>
-              {item.stats.variability.toFixed(3)}
-            </Text>
+          <View style={[styles.cardStatDivider, { backgroundColor: borderColor }]} />
+          <View style={styles.cardStatItem}>
+            <Text style={[styles.cardStatValue, { color: textColor }]}>{item.stats.variability.toFixed(3)}</Text>
+            <Text style={[styles.cardStatLabel, { color: secondaryColor }]}>Variability</Text>
           </View>
-          <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: secondaryTextColor }]}>
-              Peak
-            </Text>
-            <Text style={[styles.statValue, { color: textColor }]}>
-              {item.stats.peakAmplitude.toFixed(3)}
-            </Text>
+          <View style={[styles.cardStatDivider, { backgroundColor: borderColor }]} />
+          <View style={styles.cardStatItem}>
+            <Text style={[styles.cardStatValue, { color: textColor }]}>{item.duration}s</Text>
+            <Text style={[styles.cardStatLabel, { color: secondaryColor }]}>Duration</Text>
           </View>
         </View>
 
+        {/* Context tags */}
         {item.context && (
           <View style={styles.contextTags}>
             {item.context.caffeine && (
-              <View
-                style={[styles.tag, { backgroundColor: primaryColor + "20" }]}
-              >
-                <Text style={[styles.tagText, { color: primaryColor }]}>
-                  Caffeine
-                </Text>
+              <View style={[styles.tag, { backgroundColor: accent + '18' }]}>
+                <Text style={[styles.tagText, { color: accent }]}>Caffeine</Text>
               </View>
             )}
             {item.context.sleepDeprived && (
-              <View
-                style={[styles.tag, { backgroundColor: primaryColor + "20" }]}
-              >
-                <Text style={[styles.tagText, { color: primaryColor }]}>
-                  Sleep Deprived
-                </Text>
+              <View style={[styles.tag, { backgroundColor: accent + '18' }]}>
+                <Text style={[styles.tagText, { color: accent }]}>Sleep Deprived</Text>
               </View>
             )}
             {item.context.stress && (
-              <View
-                style={[styles.tag, { backgroundColor: primaryColor + "20" }]}
-              >
-                <Text style={[styles.tagText, { color: primaryColor }]}>
-                  Stress
-                </Text>
+              <View style={[styles.tag, { backgroundColor: accent + '18' }]}>
+                <Text style={[styles.tagText, { color: accent }]}>Stress</Text>
               </View>
             )}
           </View>
         )}
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor }]}
-      edges={["top"]}
-    >
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: textColor }]}>History</Text>
-        <View style={styles.headerActions}>
+    <SafeAreaView style={[styles.container, { backgroundColor: bg }]} edges={["top"]}>
+      {/* Oura-style centered header */}
+      <View style={[styles.header, { borderBottomColor: borderColor }]}>
+        <View style={styles.headerSide}>
           {isSelectionMode && (
-            <TouchableOpacity
-              onPress={handleBulkDelete}
-              style={[styles.actionButton, { backgroundColor: dangerColor }]}
-            >
-              <Text style={styles.actionButtonText}>
-                Delete ({selectedIds.size})
-              </Text>
-            </TouchableOpacity>
+            <Pressable onPress={handleBulkDelete} hitSlop={8}>
+              <Ionicons name="trash" size={20} color={dangerColor} />
+            </Pressable>
           )}
-          <TouchableOpacity
-            onPress={toggleSelectionMode}
-            style={[
-              styles.actionButton,
-              { backgroundColor: isSelectionMode ? primaryColor : cardColor },
-            ]}
-          >
-            <Text
-              style={[
-                styles.actionButtonText,
-                { color: isSelectionMode ? "#FFFFFF" : textColor },
-              ]}
-            >
-              {isSelectionMode ? "Cancel" : "Select"}
+        </View>
+        <Text style={[styles.headerTitle, { color: textColor }]}>History</Text>
+        <View style={[styles.headerSide, { alignItems: 'flex-end' }]}>
+          <Pressable onPress={toggleSelectionMode} hitSlop={8}>
+            <Text style={[styles.headerAction, { color: isSelectionMode ? accent : secondaryColor }]}>
+              {isSelectionMode ? 'Done' : 'Select'}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
       </View>
 
+      {isSelectionMode && selectedIds.size > 0 && (
+        <View style={[styles.selectionBanner, { backgroundColor: isDark ? '#1A2428' : '#FFFFFF' }]}>
+          <Text style={[styles.selectionText, { color: textColor }]}>
+            {selectedIds.size} selected
+          </Text>
+        </View>
+      )}
+
       {sessions.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyText, { color: secondaryTextColor }]}>
-            No recordings yet{"\n"}Start recording to see your history
+          <View style={[styles.emptyIcon, { backgroundColor: isDark ? '#1A2428' : '#FFFFFF' }]}>
+            <Ionicons name="time-outline" size={32} color={secondaryColor} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: textColor }]}>No Sessions Yet</Text>
+          <Text style={[styles.emptyText, { color: secondaryColor }]}>
+            Start a tremor check on the Record tab to see your history here.
           </Text>
         </View>
       ) : (
@@ -297,171 +298,98 @@ export default function HistoryScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={primaryColor}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accent} />
           }
         />
       )}
 
+      {/* Detail Modal - Oura style */}
       <Modal
         visible={modalVisible}
         animationType="slide"
         presentationStyle="pageSheet"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor }]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
-              Session Details
-            </Text>
-            <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <Text style={[styles.modalClose, { color: primaryColor }]}>
-                Close
-              </Text>
-            </TouchableOpacity>
+        <View style={[styles.modalContainer, { backgroundColor: bg }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
+            <Pressable onPress={() => setModalVisible(false)} hitSlop={12}>
+              <Ionicons name="chevron-back" size={24} color={textColor} />
+            </Pressable>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Session Details</Text>
+            <View style={{ width: 24 }} />
           </View>
 
-          {selectedSession && (
-            <ScrollView style={styles.modalContent}>
-              <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
-                <Text
-                  style={[styles.detailLabel, { color: secondaryTextColor }]}
-                >
-                  Date & Time
-                </Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>
-                  {new Date(selectedSession.timestamp).toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
-                <Text
-                  style={[styles.detailLabel, { color: secondaryTextColor }]}
-                >
-                  Duration
-                </Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>
-                  {selectedSession.duration} seconds
-                </Text>
-              </View>
-
-              <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
-                <Text
-                  style={[styles.detailLabel, { color: secondaryTextColor }]}
-                >
-                  Hand tremor likelihood
-                </Text>
-                <Text style={[styles.detailScoreValue, { color: textColor }]}>
-                  {getTremorScore(selectedSession.stats)}/100
-                </Text>
-                <Text
-                  style={[styles.detailScoreSub, { color: secondaryTextColor }]}
-                >
-                  {getTremorScoreLabel(getTremorScore(selectedSession.stats))}
-                </Text>
-              </View>
-
-              <View style={[styles.detailCard, { backgroundColor: cardColor }]}>
-                <Text
-                  style={[styles.detailLabel, { color: secondaryTextColor }]}
-                >
-                  Statistics
-                </Text>
-                <View style={styles.detailStats}>
-                  <View style={styles.detailStatItem}>
-                    <Text
-                      style={[
-                        styles.detailStatLabel,
-                        { color: secondaryTextColor },
-                      ]}
-                    >
-                      Mean Amplitude
-                    </Text>
-                    <Text
-                      style={[styles.detailStatValue, { color: textColor }]}
-                    >
-                      {selectedSession.stats.meanAmplitude.toFixed(4)}
-                    </Text>
-                  </View>
-                  <View style={styles.detailStatItem}>
-                    <Text
-                      style={[
-                        styles.detailStatLabel,
-                        { color: secondaryTextColor },
-                      ]}
-                    >
-                      Variability
-                    </Text>
-                    <Text
-                      style={[styles.detailStatValue, { color: textColor }]}
-                    >
-                      {selectedSession.stats.variability.toFixed(4)}
-                    </Text>
-                  </View>
-                  <View style={styles.detailStatItem}>
-                    <Text
-                      style={[
-                        styles.detailStatLabel,
-                        { color: secondaryTextColor },
-                      ]}
-                    >
-                      Peak Amplitude
-                    </Text>
-                    <Text
-                      style={[styles.detailStatValue, { color: textColor }]}
-                    >
-                      {selectedSession.stats.peakAmplitude.toFixed(4)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {selectedSession.context && (
-                <View
-                  style={[styles.detailCard, { backgroundColor: cardColor }]}
-                >
-                  <Text
-                    style={[styles.detailLabel, { color: secondaryTextColor }]}
-                  >
-                    Context
+          {selectedSession && (() => {
+            const score = getTremorScore(selectedSession.stats);
+            const color = getScoreColor(score);
+            return (
+              <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+                {/* Hero score */}
+                <View style={[styles.modalHero, { backgroundColor: cardBg }]}>
+                  <Text style={[styles.modalScoreValue, { color: textColor }]}>{score}</Text>
+                  <Text style={[styles.modalScoreStatus, { color }]}>{getScoreStatus(score)}</Text>
+                  <Text style={[styles.modalScoreSub, { color: secondaryColor }]}>
+                    {new Date(selectedSession.timestamp).toLocaleString()}
                   </Text>
-                  {selectedSession.context.caffeine && (
-                    <Text style={[styles.detailValue, { color: textColor }]}>
-                      • Caffeine consumed
-                    </Text>
-                  )}
-                  {selectedSession.context.sleepDeprived && (
-                    <Text style={[styles.detailValue, { color: textColor }]}>
-                      • Sleep deprived
-                    </Text>
-                  )}
-                  {selectedSession.context.stress && (
-                    <Text style={[styles.detailValue, { color: textColor }]}>
-                      • Feeling stressed
-                    </Text>
-                  )}
-                  {selectedSession.context.notes && (
-                    <Text
-                      style={[
-                        styles.detailValue,
-                        { color: textColor, marginTop: 8 },
-                      ]}
-                    >
-                      Notes: {selectedSession.context.notes}
-                    </Text>
-                  )}
+                  <View style={[styles.modalProgressTrack, { backgroundColor: isDark ? '#0D0D0D' : '#F0EDE8' }]}>
+                    <View style={[styles.modalProgressFill, { width: `${score}%`, backgroundColor: color }]} />
+                  </View>
                 </View>
-              )}
-            </ScrollView>
-          )}
+
+                {/* Detail cards */}
+                <View style={[styles.detailCard, { backgroundColor: cardBg }]}>
+                  <DetailRow label="Duration" value={`${selectedSession.duration}s`} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} />
+                  <DetailRow label="Samples" value={String(selectedSession.magnitude.length)} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} />
+                  <DetailRow label="Mean Amplitude" value={selectedSession.stats.meanAmplitude.toFixed(4)} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} />
+                  <DetailRow label="Variability" value={selectedSession.stats.variability.toFixed(4)} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} />
+                  <DetailRow label="Peak Amplitude" value={selectedSession.stats.peakAmplitude.toFixed(4)} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} last />
+                </View>
+
+                {selectedSession.context && (
+                  <View style={[styles.detailCard, { backgroundColor: cardBg }]}>
+                    <Text style={[styles.detailCardLabel, { color: secondaryColor }]}>CONTEXT</Text>
+                    {selectedSession.context.caffeine && <Text style={[styles.detailContextItem, { color: textColor }]}>Caffeine consumed</Text>}
+                    {selectedSession.context.sleepDeprived && <Text style={[styles.detailContextItem, { color: textColor }]}>Sleep deprived</Text>}
+                    {selectedSession.context.stress && <Text style={[styles.detailContextItem, { color: textColor }]}>Feeling stressed</Text>}
+                    {selectedSession.context.notes && <Text style={[styles.detailContextItem, { color: secondaryColor }]}>Notes: {selectedSession.context.notes}</Text>}
+                  </View>
+                )}
+              </ScrollView>
+            );
+          })()}
         </View>
       </Modal>
     </SafeAreaView>
   );
 }
+
+function DetailRow({ label, value, textColor, secondaryColor, borderColor, last }: {
+  label: string; value: string; textColor: string; secondaryColor: string; borderColor: string; last?: boolean;
+}) {
+  return (
+    <View style={[detailRowStyles.row, !last && { borderBottomWidth: 0.5, borderBottomColor: borderColor }]}>
+      <Text style={[detailRowStyles.label, { color: secondaryColor }]}>{label}</Text>
+      <Text style={[detailRowStyles.value, { color: textColor }]}>{value}</Text>
+    </View>
+  );
+}
+
+const detailRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  value: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -472,148 +400,152 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
   },
-  title: {
-    fontSize: 36,
-    fontWeight: "700",
-    letterSpacing: -0.5,
+  headerSide: {
+    width: 60,
   },
-  headerActions: {
-    flexDirection: "row",
-    gap: 10,
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
-  actionButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+  headerAction: {
+    fontSize: 14,
+    fontWeight: '600',
   },
-  actionButtonText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "600",
-    letterSpacing: 0.3,
+  selectionBanner: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  selectionText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   listContent: {
-    padding: 20,
-    paddingTop: 8,
+    padding: 16,
+    paddingTop: 12,
   },
   sessionCard: {
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 10,
   },
-  sessionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 16,
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  sessionInfo: {
+  cardDate: {
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cardScoreLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cardScoreValue: {
+    fontSize: 40,
+    fontWeight: '200',
+    letterSpacing: -1.5,
+  },
+  cardScoreMeta: {},
+  cardScoreLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  cardScoreSub: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 1,
+  },
+  scoreDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  cardStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 14,
+  },
+  cardStatItem: {
     flex: 1,
+    alignItems: 'center',
   },
-  sessionDate: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 6,
+  cardStatValue: {
+    fontSize: 15,
+    fontWeight: '500',
     letterSpacing: -0.3,
   },
-  sessionDuration: {
-    fontSize: 15,
-    fontWeight: "400",
-  },
-  tremorScoreRow: {
-    marginTop: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.04)",
-    alignItems: "center",
-  },
-  tremorScoreLabel: {
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  tremorScoreValue: {
-    fontSize: 24,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
-  tremorScoreSub: {
-    fontSize: 13,
+  cardStatLabel: {
+    fontSize: 10,
+    fontWeight: '500',
     marginTop: 2,
-    fontWeight: "600",
+    letterSpacing: 0.3,
   },
-  deleteButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  deleteButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  statsRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#3E3E42",
-  },
-  statItem: {
-    alignItems: "center",
-    flex: 1,
-  },
-  statLabel: {
-    fontSize: 13,
-    marginBottom: 6,
-    fontWeight: "500",
-    opacity: 0.7,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: "700",
-    letterSpacing: -0.3,
+  cardStatDivider: {
+    width: 0.5,
+    height: 28,
   },
   contextTags: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 16,
-    gap: 10,
+    marginTop: 12,
+    gap: 6,
   },
   tag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   tagText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "600",
-    letterSpacing: 0.2,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 60,
+    padding: 40,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 14,
     textAlign: "center",
-    lineHeight: 28,
-    fontWeight: "400",
+    lineHeight: 22,
   },
   modalContainer: {
     flex: 1,
@@ -623,62 +555,66 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#3E3E42",
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
   },
   modalTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-  },
-  modalClose: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: "600",
   },
   modalContent: {
     flex: 1,
-    padding: 20,
+    padding: 16,
   },
-  detailCard: {
+  modalHero: {
     borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  detailLabel: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  detailValue: {
-    fontSize: 17,
-  },
-  detailScoreValue: {
-    fontSize: 28,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-    marginTop: 4,
-  },
-  detailScoreSub: {
-    fontSize: 15,
-    marginTop: 4,
-    fontWeight: "600",
-  },
-  detailStats: {
-    marginTop: 8,
-  },
-  detailStatItem: {
+    padding: 24,
+    alignItems: 'center',
     marginBottom: 12,
   },
-  detailStatLabel: {
-    fontSize: 14,
+  modalScoreValue: {
+    fontSize: 56,
+    fontWeight: '200',
+    letterSpacing: -2,
+  },
+  modalScoreStatus: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginTop: 2,
+  },
+  modalScoreSub: {
+    fontSize: 13,
+    marginTop: 8,
+  },
+  modalProgressTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    width: '100%',
+    marginTop: 16,
+  },
+  modalProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  detailCard: {
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 4,
+    marginBottom: 12,
+  },
+  detailCardLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginTop: 14,
     marginBottom: 4,
   },
-  detailStatValue: {
-    fontSize: 20,
-    fontWeight: "600",
+  detailContextItem: {
+    fontSize: 14,
+    fontWeight: '400',
+    paddingVertical: 8,
   },
 });

@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Switch,
   Alert,
   Share,
   Modal,
+  Pressable,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme, type ThemePreference } from '@/context/ThemeContext';
-import { AppSettings, SamplingRate } from '@/types';
+import { AppSettings, SamplingRate, UserProfile } from '@/types';
 import {
   loadSettings,
   saveSettings,
@@ -21,24 +23,43 @@ import {
   exportSessionsAsJSON,
   exportSessionsAsCSV,
   loadAllSessions,
+  loadProfile,
+  saveProfile,
 } from '@/utils/storage';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
+const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
+
 export default function SettingsScreen() {
   const { theme, preference, setPreference } = useTheme();
   const isDark = theme === 'dark';
-  
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+  const [editProfileVisible, setEditProfileVisible] = useState(false);
+  const [scanSettingsVisible, setScanSettingsVisible] = useState(false);
+
+  // Edit profile form state
+  const [editName, setEditName] = useState('');
+  const [editGender, setEditGender] = useState('');
+  const [editBirthday, setEditBirthday] = useState('');
 
   useEffect(() => {
     loadSettings().then(setSettings);
+    loadProfile().then(setProfile);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile().then(setProfile);
+    }, [])
+  );
 
   const updateSettings = async (updates: Partial<AppSettings>) => {
     if (!settings) return;
@@ -52,84 +73,46 @@ export default function SettingsScreen() {
     try {
       const json = await exportSessionsAsJSON();
       const sessions = await loadAllSessions();
-      
-      if (sessions.length === 0) {
-        Alert.alert('No Data', 'There are no sessions to export.');
-        return;
-      }
-
+      if (sessions.length === 0) { Alert.alert('No Data', 'No sessions to export.'); return; }
       const fileUri = FileSystem.documentDirectory + 'tremorsense_export.json';
       await FileSystem.writeAsStringAsync(fileUri, json);
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri);
-      } else {
-        await Share.share({
-          message: json,
-          title: 'TremorSense Export',
-        });
-      }
-      
+      if (await Sharing.isAvailableAsync()) { await Sharing.shareAsync(fileUri); }
+      else { await Share.share({ message: json, title: 'TremorSense Export' }); }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      Alert.alert('Export Failed', 'Could not export data. Please try again.');
-      console.error(error);
-    }
+    } catch { Alert.alert('Export Failed', 'Could not export data.'); }
   };
 
   const handleExportCSV = async () => {
     try {
       const csv = await exportSessionsAsCSV();
       const sessions = await loadAllSessions();
-      
-      if (sessions.length === 0) {
-        Alert.alert('No Data', 'There are no sessions to export.');
-        return;
-      }
-
+      if (sessions.length === 0) { Alert.alert('No Data', 'No sessions to export.'); return; }
       const fileUri = FileSystem.documentDirectory + 'tremorsense_export.csv';
       await FileSystem.writeAsStringAsync(fileUri, csv);
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri);
-      } else {
-        await Share.share({
-          message: csv,
-          title: 'TremorSense Export',
-        });
-      }
-      
+      if (await Sharing.isAvailableAsync()) { await Sharing.shareAsync(fileUri); }
+      else { await Share.share({ message: csv, title: 'TremorSense Export' }); }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      Alert.alert('Export Failed', 'Could not export data. Please try again.');
-      console.error(error);
-    }
+    } catch { Alert.alert('Export Failed', 'Could not export data.'); }
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Log out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            if (auth) {
-              await signOut(auth);
-            }
-            router.replace('/sign-in');
-          },
+    Alert.alert('Log out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          if (auth) await signOut(auth);
+          router.replace('/sign-in');
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleClearData = () => {
     Alert.alert(
       'Clear All Data',
-      'This will permanently delete all your recording sessions. This action cannot be undone.',
+      'This will permanently delete all sessions. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -138,271 +121,384 @@ export default function SettingsScreen() {
           onPress: async () => {
             await clearAllSessions();
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            Alert.alert('Success', 'All data has been cleared.');
+            Alert.alert('Success', 'All data cleared.');
           },
         },
       ]
     );
   };
 
+  const openEditProfile = () => {
+    setEditName(profile?.name || '');
+    setEditGender(profile?.gender || '');
+    setEditBirthday(profile?.birthday || '');
+    setEditProfileVisible(true);
+  };
+
+  const formatBirthday = (text: string) => {
+    const digits = text.replace(/\D/g, '');
+    let formatted = '';
+    if (digits.length > 0) formatted = digits.slice(0, 2);
+    if (digits.length > 2) formatted += '/' + digits.slice(2, 4);
+    if (digits.length > 4) formatted += '/' + digits.slice(4, 8);
+    setEditBirthday(formatted);
+  };
+
+  const handleSaveProfile = async () => {
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      Alert.alert('Name Required', 'Please enter your name.');
+      return;
+    }
+    const updatedProfile: UserProfile = {
+      name: trimmedName,
+      gender: editGender,
+      birthday: editBirthday,
+    };
+    await saveProfile(updatedProfile);
+    setProfile(updatedProfile);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setEditProfileVisible(false);
+  };
+
+  const bg = isDark ? '#0D0D0D' : '#F5F5F0';
+  const cardBg = isDark ? '#1A2428' : '#FFFFFF';
+  const textColor = isDark ? '#E8E4DC' : '#1C1C1E';
+  const secondaryColor = isDark ? '#8A8A8E' : '#6D6D72';
+  const accent = isDark ? '#5CC5AB' : '#2D9B8A';
+  const borderColor = isDark ? '#2A3438' : '#E5E5E0';
+  const inputBg = isDark ? '#0D0D0D' : '#F0EDE8';
+  const inputBorder = isDark ? '#2A3438' : '#E5E5E0';
+  const dangerColor = '#E85D5D';
+
+  const userName = profile?.name || 'User';
+  const userEmail = auth?.currentUser?.email || '';
+  const initial = userName.charAt(0).toUpperCase();
+
   if (!settings) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#1a1520' : '#F5F2FA' }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: bg }]} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? '#FFFFFF' : '#6B4EAA' }]}>
-            Loading...
-          </Text>
+          <Text style={[styles.loadingText, { color: secondaryColor }]}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const PURPLE = '#6B4EAA';
-  const backgroundColor = isDark ? '#1a1520' : '#F5F2FA';
-  const cardColor = isDark ? '#2a2433' : '#FFFFFF';
-  const textColor = isDark ? '#FFFFFF' : '#1C1C1E';
-  const secondaryTextColor = isDark ? '#B8B0C4' : '#6D6D72';
-  const primaryColor = PURPLE;
-  const dangerColor = '#FF3B30';
-
-  const SamplingRateButton = ({ rate, label }: { rate: SamplingRate; label: string }) => (
-    <TouchableOpacity
-      style={[
-        styles.rateButton,
-        {
-          backgroundColor: settings.samplingRate === rate ? primaryColor : 'transparent',
-          borderColor: primaryColor,
-        },
-      ]}
-      onPress={() => updateSettings({ samplingRate: rate })}
-    >
-      <Text
-        style={[
-          styles.rateButtonText,
-          { color: settings.samplingRate === rate ? '#FFFFFF' : textColor },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-
-  const DurationButton = ({ duration, label }: { duration: number; label: string }) => (
-    <TouchableOpacity
-      style={[
-        styles.rateButton,
-        {
-          backgroundColor: settings.recordingDuration === duration ? primaryColor : 'transparent',
-          borderColor: primaryColor,
-        },
-      ]}
-      onPress={() => updateSettings({ recordingDuration: duration })}
-    >
-      <Text
-        style={[
-          styles.rateButtonText,
-          {
-            color: settings.recordingDuration === duration ? '#FFFFFF' : textColor,
-          },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor }]} edges={['top']}>
-      <ScrollView 
+    <SafeAreaView style={[styles.container, { backgroundColor: bg }]} edges={['top']}>
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: borderColor }]}>
+        <View style={styles.headerSide} />
+        <Text style={[styles.headerTitle, { color: textColor }]}>Profile</Text>
+        <View style={styles.headerSide} />
+      </View>
+
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: primaryColor }]}>Settings</Text>
-        </View>
-
-        <View style={[styles.section, { backgroundColor: cardColor }]}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>Recording Settings</Text>
-
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingLabel, { color: textColor }]}>Sampling Rate</Text>
-            <View style={styles.buttonRow}>
-              <SamplingRateButton rate="low" label="Low (20Hz)" />
-              <SamplingRateButton rate="medium" label="Medium (50Hz)" />
-              <SamplingRateButton rate="high" label="High (100Hz)" />
-            </View>
+        {/* Profile Card */}
+        <View style={[styles.profileCard, { backgroundColor: cardBg }]}>
+          <View style={[styles.profileAvatar, { backgroundColor: accent }]}>
+            <Text style={styles.profileInitial}>{initial}</Text>
           </View>
-
-          <View style={styles.settingItem}>
-            <Text style={[styles.settingLabel, { color: textColor }]}>Recording Duration</Text>
-            <View style={styles.buttonRow}>
-              <DurationButton duration={5} label="5s" />
-              <DurationButton duration={10} label="10s" />
-              <DurationButton duration={15} label="15s" />
-              <DurationButton duration={30} label="30s" />
-            </View>
+          <View style={styles.profileInfo}>
+            <Text style={[styles.profileName, { color: textColor }]}>{userName}</Text>
+            {userEmail ? (
+              <Text style={[styles.profileEmail, { color: secondaryColor }]}>{userEmail}</Text>
+            ) : null}
           </View>
         </View>
 
-        <View style={[styles.section, { backgroundColor: cardColor }]}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>Appearance</Text>
-          <Text style={[styles.settingLabel, { color: textColor }]}>Theme</Text>
-          <View style={styles.buttonRow}>
-            {(['light', 'dark', 'auto'] as const).map((opt) => (
-              <TouchableOpacity
-                key={opt}
-                style={[
-                  styles.rateButton,
-                  {
-                    backgroundColor: preference === opt ? primaryColor : 'transparent',
-                    borderColor: primaryColor,
-                  },
-                ]}
-                onPress={() => setPreference(opt)}
-              >
-                <Text
-                  style={[
-                    styles.rateButtonText,
-                    { color: preference === opt ? '#FFFFFF' : textColor },
-                  ]}
-                >
-                  {opt === 'light' ? 'Light' : opt === 'dark' ? 'Dark' : 'System'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={[styles.settingDescription, { color: secondaryTextColor, marginTop: 8 }]}>
-            {preference === 'auto' ? 'Following system light/dark' : `${preference === 'dark' ? 'Dark' : 'Light'} mode`}
-          </Text>
-        </View>
-
-        <View style={[styles.section, { backgroundColor: cardColor }]}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>Data Management</Text>
-
-          <TouchableOpacity
-            style={[styles.actionButton, { borderBottomColor: isDark ? '#3d3548' : '#E8E4F0' }]}
-            onPress={handleExportJSON}
-          >
-            <Text style={[styles.actionButtonText, { color: primaryColor }]}>
-              Export as JSON
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, { borderBottomColor: isDark ? '#3d3548' : '#E8E4F0' }]}
-            onPress={handleExportCSV}
-          >
-            <Text style={[styles.actionButtonText, { color: primaryColor }]}>
-              Export as CSV
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.dangerButton]}
-            onPress={handleClearData}
-          >
-            <Text style={[styles.actionButtonText, { color: dangerColor }]}>
-              Clear All Data
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.section, { backgroundColor: cardColor }]}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>Privacy & Ethics</Text>
-          <TouchableOpacity
-            style={[styles.actionButton, { borderBottomColor: isDark ? '#3d3548' : '#E8E4F0' }]}
-            onPress={() => setPrivacyModalVisible(true)}
-          >
-            <Text style={[styles.actionButtonText, { color: primaryColor }]}>
-              View Privacy & Ethics Information
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.section, { backgroundColor: cardColor }]}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>About</Text>
-          <Text style={[styles.infoText, { color: secondaryTextColor }]}>
-            TremorSense v1.0.0
-          </Text>
-          <Text style={[styles.infoText, { color: secondaryTextColor }]}>
-            A motion tracking and visualization app
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.logoutButton, { backgroundColor: cardColor }]}
-          onPress={handleLogout}
-          activeOpacity={0.8}
+        {/* Edit Profile Button */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.editProfileButton,
+            { backgroundColor: accent },
+            pressed && { opacity: 0.85 },
+          ]}
+          onPress={openEditProfile}
         >
-          <Text style={[styles.logoutButtonText, { color: dangerColor }]}>
-            Log out
-          </Text>
-        </TouchableOpacity>
+          <Text style={styles.editProfileText}>Edit Profile</Text>
+        </Pressable>
+
+        {/* Menu Items */}
+        <View style={[styles.menuSection, { backgroundColor: cardBg }]}>
+          <MenuRow
+            icon="download-outline"
+            label="Export Data (JSON)"
+            onPress={handleExportJSON}
+            textColor={textColor}
+            secondaryColor={secondaryColor}
+            borderColor={borderColor}
+          />
+          <MenuRow
+            icon="document-text-outline"
+            label="Export Data (CSV)"
+            onPress={handleExportCSV}
+            textColor={textColor}
+            secondaryColor={secondaryColor}
+            borderColor={borderColor}
+          />
+          <MenuRow
+            icon="settings-outline"
+            label="Scan Settings"
+            onPress={() => setScanSettingsVisible(true)}
+            textColor={textColor}
+            secondaryColor={secondaryColor}
+            borderColor={borderColor}
+          />
+          <MenuRow
+            icon="shield-checkmark-outline"
+            label="Privacy & Ethics"
+            onPress={() => setPrivacyModalVisible(true)}
+            textColor={textColor}
+            secondaryColor={secondaryColor}
+            borderColor={borderColor}
+          />
+          <MenuRow
+            icon="color-palette-outline"
+            label={`Theme: ${preference === 'auto' ? 'System' : preference === 'dark' ? 'Dark' : 'Light'}`}
+            onPress={() => {
+              const next: ThemePreference = preference === 'light' ? 'dark' : preference === 'dark' ? 'auto' : 'light';
+              setPreference(next);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            textColor={textColor}
+            secondaryColor={secondaryColor}
+            borderColor={borderColor}
+          />
+          <MenuRow
+            icon="trash-outline"
+            label="Clear All Data"
+            onPress={handleClearData}
+            textColor={dangerColor}
+            secondaryColor={secondaryColor}
+            borderColor={borderColor}
+            last
+            danger
+          />
+        </View>
+
+        {/* Log out */}
+        <Pressable
+          style={({ pressed }) => [styles.logoutRow, { backgroundColor: cardBg }, pressed && { opacity: 0.8 }]}
+          onPress={handleLogout}
+        >
+          <Ionicons name="log-out-outline" size={22} color={dangerColor} />
+          <Text style={[styles.logoutText, { color: dangerColor }]}>Log out</Text>
+        </Pressable>
+
+        {/* Version */}
+        <Text style={[styles.versionText, { color: secondaryColor }]}>TremorSense v1.0.0</Text>
       </ScrollView>
 
-      <Modal
-        visible={privacyModalVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setPrivacyModalVisible(false)}
-      >
-        <View style={[styles.modalContainer, { backgroundColor }]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
-              Privacy & Ethics
-            </Text>
-            <TouchableOpacity onPress={() => setPrivacyModalVisible(false)}>
-              <Text style={[styles.modalClose, { color: primaryColor }]}>Close</Text>
-            </TouchableOpacity>
+      {/* ===== Edit Profile Modal ===== */}
+      <Modal visible={editProfileVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditProfileVisible(false)}>
+        <View style={[styles.modalContainer, { backgroundColor: bg }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
+            <Pressable onPress={() => setEditProfileVisible(false)} hitSlop={12}>
+              <Ionicons name="chevron-back" size={24} color={textColor} />
+            </Pressable>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Edit Profile</Text>
+            <Pressable onPress={handleSaveProfile} hitSlop={12}>
+              <Text style={[styles.modalSaveText, { color: accent }]}>Save</Text>
+            </Pressable>
+          </View>
+
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
+              {/* Avatar */}
+              <View style={styles.editAvatarSection}>
+                <View style={[styles.editAvatar, { backgroundColor: accent }]}>
+                  <Text style={styles.editAvatarLetter}>
+                    {editName.trim().charAt(0).toUpperCase() || '?'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Personal Section */}
+              <View style={[styles.editCard, { backgroundColor: cardBg }]}>
+                <Text style={[styles.editSectionLabel, { color: secondaryColor }]}>Personal</Text>
+
+                <View style={styles.editInputGroup}>
+                  <Text style={[styles.editFieldLabel, { color: secondaryColor }]}>NAME</Text>
+                  <View style={styles.editInputRow}>
+                    <TextInput
+                      style={[styles.editInput, { backgroundColor: inputBg, color: textColor, borderColor: inputBorder }]}
+                      value={editName}
+                      onChangeText={setEditName}
+                      placeholder="Your name"
+                      placeholderTextColor={isDark ? '#4A4A4E' : '#AEAEB2'}
+                      autoCapitalize="words"
+                    />
+                    {editName.trim().length > 0 && (
+                      <Ionicons name="checkmark" size={20} color={accent} style={styles.editCheckIcon} />
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.editInputGroup}>
+                  <Text style={[styles.editFieldLabel, { color: secondaryColor }]}>GENDER</Text>
+                  <View style={styles.editGenderRow}>
+                    {GENDER_OPTIONS.map((opt) => (
+                      <Pressable
+                        key={opt}
+                        style={[
+                          styles.editGenderPill,
+                          {
+                            backgroundColor: editGender === opt ? accent : 'transparent',
+                            borderColor: editGender === opt ? accent : inputBorder,
+                          },
+                        ]}
+                        onPress={() => setEditGender(opt)}
+                      >
+                        <Text style={[styles.editGenderText, { color: editGender === opt ? '#FFFFFF' : textColor }]}>
+                          {opt}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.editInputGroup}>
+                  <Text style={[styles.editFieldLabel, { color: secondaryColor }]}>BIRTHDAY</Text>
+                  <View style={styles.editInputRow}>
+                    <TextInput
+                      style={[styles.editInput, { backgroundColor: inputBg, color: textColor, borderColor: inputBorder }]}
+                      value={editBirthday}
+                      onChangeText={formatBirthday}
+                      placeholder="MM/DD/YYYY"
+                      placeholderTextColor={isDark ? '#4A4A4E' : '#AEAEB2'}
+                      keyboardType="number-pad"
+                      maxLength={10}
+                    />
+                    <Ionicons name="calendar-outline" size={20} color={secondaryColor} style={styles.editCheckIcon} />
+                  </View>
+                </View>
+              </View>
+
+              {/* Email & Password (read-only display) */}
+              {userEmail ? (
+                <View style={[styles.editCard, { backgroundColor: cardBg }]}>
+                  <Text style={[styles.editSectionLabel, { color: secondaryColor }]}>Email</Text>
+                  <View style={styles.editInputGroup}>
+                    <View style={styles.editInputRow}>
+                      <TextInput
+                        style={[styles.editInput, { backgroundColor: inputBg, color: secondaryColor, borderColor: inputBorder }]}
+                        value={userEmail}
+                        editable={false}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Save button inside modal */}
+              <Pressable
+                onPress={handleSaveProfile}
+                style={({ pressed }) => [
+                  styles.modalSaveButton,
+                  { backgroundColor: accent },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Text style={styles.modalSaveButtonText}>Save</Text>
+              </Pressable>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* ===== Scan Settings Modal ===== */}
+      <Modal visible={scanSettingsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setScanSettingsVisible(false)}>
+        <View style={[styles.modalContainer, { backgroundColor: bg }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
+            <Pressable onPress={() => setScanSettingsVisible(false)} hitSlop={12}>
+              <Ionicons name="chevron-back" size={24} color={textColor} />
+            </Pressable>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Scan Settings</Text>
+            <View style={{ width: 24 }} />
           </View>
           <ScrollView style={styles.modalContent}>
-            <View style={[styles.modalSection, { backgroundColor: cardColor }]}>
-              <Text style={[styles.modalSectionTitle, { color: textColor }]}>
-                What This App Does
-              </Text>
-              <Text style={[styles.modalText, { color: textColor }]}>
-                TremorSense measures motion using your device's built-in sensors (accelerometer
-                and gyroscope). It records, stores, analyzes, and visualizes this motion data to
-                help you observe patterns over time.
-              </Text>
+            <View style={[styles.editCard, { backgroundColor: cardBg }]}>
+              <Text style={[styles.editSectionLabel, { color: secondaryColor }]}>Sampling Rate</Text>
+              <View style={styles.pillRow}>
+                {([
+                  { rate: 'low' as SamplingRate, label: '20Hz' },
+                  { rate: 'medium' as SamplingRate, label: '50Hz' },
+                  { rate: 'high' as SamplingRate, label: '100Hz' },
+                ]).map(({ rate, label }) => (
+                  <Pressable
+                    key={rate}
+                    style={[
+                      styles.pill,
+                      {
+                        backgroundColor: settings.samplingRate === rate ? accent : 'transparent',
+                        borderColor: settings.samplingRate === rate ? accent : borderColor,
+                      },
+                    ]}
+                    onPress={() => updateSettings({ samplingRate: rate })}
+                  >
+                    <Text style={[styles.pillText, { color: settings.samplingRate === rate ? '#FFFFFF' : textColor }]}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
 
-            <View style={[styles.modalSection, { backgroundColor: cardColor }]}>
-              <Text style={[styles.modalSectionTitle, { color: textColor }]}>
-                What This App Does NOT Do
-              </Text>
-              <Text style={[styles.modalText, { color: textColor }]}>
-                • This app does NOT diagnose any medical condition{'\n'}
-                • This app does NOT provide medical advice{'\n'}
-                • This app does NOT predict or treat diseases{'\n'}
-                • This app does NOT connect to any external servers or APIs{'\n'}
-                • This app does NOT share your data with third parties
-              </Text>
+            <View style={[styles.editCard, { backgroundColor: cardBg }]}>
+              <Text style={[styles.editSectionLabel, { color: secondaryColor }]}>Duration</Text>
+              <View style={styles.pillRow}>
+                {[5, 10, 15, 30].map((d) => (
+                  <Pressable
+                    key={d}
+                    style={[
+                      styles.pill,
+                      {
+                        backgroundColor: settings.recordingDuration === d ? accent : 'transparent',
+                        borderColor: settings.recordingDuration === d ? accent : borderColor,
+                      },
+                    ]}
+                    onPress={() => updateSettings({ recordingDuration: d })}
+                  >
+                    <Text style={[styles.pillText, { color: settings.recordingDuration === d ? '#FFFFFF' : textColor }]}>
+                      {d}s
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
+          </ScrollView>
+        </View>
+      </Modal>
 
-            <View style={[styles.modalSection, { backgroundColor: cardColor }]}>
-              <Text style={[styles.modalSectionTitle, { color: textColor }]}>
-                Data Privacy
-              </Text>
-              <Text style={[styles.modalText, { color: textColor }]}>
-                All data is stored locally on your device using AsyncStorage. No data is sent to
-                external servers. You can export or delete your data at any time through the
-                Settings screen.
-              </Text>
-            </View>
-
-            <View style={[styles.modalSection, { backgroundColor: cardColor }]}>
-              <Text style={[styles.modalSectionTitle, { color: textColor }]}>
-                Important Disclaimer
-              </Text>
-              <Text style={[styles.modalText, { color: dangerColor, fontWeight: '600' }]}>
-                This app is for informational and observational purposes only. If you have concerns
-                about your health, please consult with a qualified healthcare professional. This app
-                should not be used as a substitute for professional medical advice, diagnosis, or
-                treatment.
-              </Text>
-            </View>
+      {/* ===== Privacy Modal ===== */}
+      <Modal visible={privacyModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPrivacyModalVisible(false)}>
+        <View style={[styles.modalContainer, { backgroundColor: bg }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
+            <Pressable onPress={() => setPrivacyModalVisible(false)} hitSlop={12}>
+              <Ionicons name="chevron-back" size={24} color={textColor} />
+            </Pressable>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Privacy & Ethics</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <ScrollView style={styles.modalContent}>
+            <PrivacySection title="WHAT THIS APP DOES" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor}
+              text="TremorSense measures motion using your device's built-in sensors (accelerometer and gyroscope). It records, stores, analyzes, and visualizes this motion data to help you observe patterns over time."
+            />
+            <PrivacySection title="WHAT THIS APP DOES NOT DO" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor}
+              text="This app does NOT diagnose any medical condition, provide medical advice, predict or treat diseases, connect to external servers, or share your data with third parties."
+            />
+            <PrivacySection title="DATA PRIVACY" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor}
+              text="All data is stored locally on your device using AsyncStorage. No data is sent to external servers. You can export or delete your data at any time through Settings."
+            />
+            <PrivacySection title="IMPORTANT DISCLAIMER" cardBg={cardBg} secondaryColor={secondaryColor} textColor={dangerColor}
+              text="This app is for informational and observational purposes only. If you have concerns about your health, please consult with a qualified healthcare professional."
+            />
           </ScrollView>
         </View>
       </Modal>
@@ -410,170 +506,261 @@ export default function SettingsScreen() {
   );
 }
 
+function MenuRow({ icon, label, onPress, textColor, secondaryColor, borderColor, last, danger }: {
+  icon: string; label: string; onPress: () => void; textColor: string; secondaryColor: string; borderColor: string; last?: boolean; danger?: boolean;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.menuRow, !last && { borderBottomWidth: 0.5, borderBottomColor: borderColor }, pressed && { opacity: 0.7 }]}
+      onPress={onPress}
+    >
+      <View style={styles.menuRowLeft}>
+        <View style={[styles.menuIconCircle, { backgroundColor: (danger ? '#E85D5D' : secondaryColor) + '15' }]}>
+          <Ionicons name={icon as any} size={20} color={danger ? textColor : secondaryColor} />
+        </View>
+        <Text style={[styles.menuRowLabel, { color: textColor }]}>{label}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={secondaryColor} />
+    </Pressable>
+  );
+}
+
+function PrivacySection({ title, text, cardBg, secondaryColor, textColor }: {
+  title: string; text: string; cardBg: string; secondaryColor: string; textColor: string;
+}) {
+  return (
+    <View style={[styles.privacyCard, { backgroundColor: cardBg }]}>
+      <Text style={[styles.privacyLabel, { color: secondaryColor }]}>{title}</Text>
+      <Text style={[styles.privacyText, { color: textColor }]}>{text}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 20,
-    paddingBottom: 48,
-  },
+  container: { flex: 1 },
+  scrollView: { flex: 1 },
+  contentContainer: { padding: 16, paddingBottom: 48 },
   header: {
-    marginBottom: 28,
-    marginTop: 8,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 17,
-    textAlign: 'center',
-  },
-  section: {
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    marginBottom: 24,
-    letterSpacing: -0.3,
-  },
-  settingItem: {
-    marginBottom: 28,
-  },
-  settingLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    letterSpacing: -0.3,
-  },
-  settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  settingDescription: {
-    fontSize: 14,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  rateButton: {
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    minWidth: 110,
+    borderBottomWidth: 0.5,
+  },
+  headerSide: { width: 40 },
+  headerTitle: { fontSize: 16, fontWeight: '600', letterSpacing: 0.2 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { fontSize: 15 },
+
+  // Profile card
+  profileCard: {
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    borderRadius: 16,
+    padding: 24,
+    paddingBottom: 16,
+    marginBottom: 0,
   },
-  rateButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  actionButton: {
-    paddingVertical: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8E4F0',
-  },
-  dangerButton: {
-    borderBottomWidth: 0,
-    marginTop: 12,
-    borderRadius: 12,
-  },
-  actionButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  infoText: {
-    fontSize: 15,
-    marginBottom: 8,
-  },
-  logoutButton: {
-    marginTop: 8,
-    marginBottom: 24,
-    paddingVertical: 18,
-    borderRadius: 14,
+  profileAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    marginBottom: 14,
   },
-  logoutButtonText: {
-    fontSize: 18,
+  profileInitial: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  profileInfo: {
+    alignItems: 'center',
+  },
+  profileName: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  profileEmail: {
+    fontSize: 14,
+  },
+
+  // Edit profile button
+  editProfileButton: {
+    marginHorizontal: 40,
+    marginTop: 12,
+    marginBottom: 20,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  editProfileText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '600',
   },
-  modalContainer: {
-    flex: 1,
-    paddingTop: 60,
+
+  // Menu section
+  menuSection: {
+    borderRadius: 16,
+    marginBottom: 12,
   },
+  menuRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  menuRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  menuIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuRowLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+
+  // Logout
+  logoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 16,
+    paddingVertical: 16,
+    marginBottom: 16,
+  },
+  logoutText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Version
+  versionText: {
+    textAlign: 'center',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+
+  // Modal shared
+  modalContainer: { flex: 1, paddingTop: 60 },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
   },
-  modalTitle: {
-    fontSize: 24,
+  modalTitle: { fontSize: 16, fontWeight: '600' },
+  modalSaveText: { fontSize: 16, fontWeight: '600' },
+  modalContent: { flex: 1, padding: 16 },
+
+  // Edit profile modal
+  editAvatarSection: {
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  editAvatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editAvatarLetter: {
+    fontSize: 38,
     fontWeight: '700',
+    color: '#FFFFFF',
   },
-  modalClose: {
-    fontSize: 17,
-    fontWeight: '600',
+  editCard: {
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 12,
   },
-  modalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  modalSection: {
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  modalSectionTitle: {
-    fontSize: 22,
+  editSectionLabel: {
+    fontSize: 16,
     fontWeight: '600',
     marginBottom: 16,
-    letterSpacing: -0.3,
   },
-  modalText: {
-    fontSize: 17,
-    lineHeight: 28,
-    fontWeight: '400',
+  editInputGroup: {
+    marginBottom: 16,
   },
+  editFieldLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 6,
+    marginLeft: 2,
+  },
+  editInputRow: {
+    position: 'relative',
+  },
+  editInput: {
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    paddingRight: 44,
+  },
+  editCheckIcon: {
+    position: 'absolute',
+    right: 14,
+    top: 14,
+  },
+  editGenderRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  editGenderPill: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+  },
+  editGenderText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalSaveButton: {
+    borderRadius: 14,
+    paddingVertical: 17,
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 40,
+  },
+  modalSaveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Scan settings pills
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pill: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  pillText: { fontSize: 13, fontWeight: '600' },
+
+  // Privacy
+  privacyCard: { borderRadius: 16, padding: 18, marginBottom: 12 },
+  privacyLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 10 },
+  privacyText: { fontSize: 15, lineHeight: 24 },
 });

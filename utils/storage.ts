@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { RecordingSession, AppSettings } from '@/types';
+import { RecordingSession, AppSettings, UserProfile } from '@/types';
 
 const SESSIONS_KEY = '@tremorsense:sessions';
 const SETTINGS_KEY = '@tremorsense:settings';
+const PROFILE_KEY = '@tremorsense:profile';
 
 const DEFAULT_SETTINGS: AppSettings = {
   samplingRate: 'medium',
@@ -182,6 +183,45 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     }
   } catch (error) {
     console.error('Error saving settings:', error);
+    throw error;
+  }
+}
+
+export async function loadProfile(): Promise<UserProfile | null> {
+  try {
+    let data: string | null = null;
+    if (isAsyncStorageAvailable) {
+      try {
+        data = await AsyncStorage.getItem(PROFILE_KEY);
+      } catch {
+        isAsyncStorageAvailable = false;
+        data = memoryStorage[PROFILE_KEY] || null;
+      }
+    } else {
+      data = memoryStorage[PROFILE_KEY] || null;
+    }
+    if (!data) return null;
+    return JSON.parse(data) as UserProfile;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveProfile(profile: UserProfile): Promise<void> {
+  try {
+    const data = JSON.stringify(profile);
+    if (isAsyncStorageAvailable) {
+      try {
+        await AsyncStorage.setItem(PROFILE_KEY, data);
+      } catch {
+        isAsyncStorageAvailable = false;
+        memoryStorage[PROFILE_KEY] = data;
+      }
+    } else {
+      memoryStorage[PROFILE_KEY] = data;
+    }
+  } catch (error) {
+    console.error('Error saving profile:', error);
     throw error;
   }
 }

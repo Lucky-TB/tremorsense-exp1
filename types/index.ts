@@ -38,6 +38,12 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'auto';
 }
 
+export interface UserProfile {
+  name: string;
+  gender: string;
+  birthday: string; // MM/DD/YYYY
+}
+
 export interface StabilityClassification {
   type: 'stable' | 'variable' | 'increasing' | 'irregular';
   confidence: number;

@@ -12,11 +12,12 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@google/generative-ai": "^0.24.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
-    "@tamagui/config": "^2.0.0-rc.21",
+    "@tamagui/config": "^1.144.4",
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
     "expo-file-system": "^19.0.21",
@@ -45,9 +46,10 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.5.1",
-    "tamagui": "^2.0.0-rc.21"
+    "tamagui": "^1.144.4"
   },
   "devDependencies": {
+    "@tamagui/babel-plugin": "^1.144.4",
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
