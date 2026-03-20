@@ -30,7 +30,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as FileSystem from 'expo-file-system';
+import { Paths, File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { generateDoctorReport } from '@/utils/reportGenerator';
 
@@ -86,28 +86,38 @@ export default function SettingsScreen() {
 
   const handleExportJSON = async () => {
     try {
-      const json = await exportSessionsAsJSON();
       const sessions = await loadAllSessions();
       if (sessions.length === 0) { Alert.alert('No Data', 'No sessions to export.'); return; }
-      const fileUri = FileSystem.documentDirectory + 'tremorsense_export.json';
-      await FileSystem.writeAsStringAsync(fileUri, json);
-      if (await Sharing.isAvailableAsync()) { await Sharing.shareAsync(fileUri); }
+      const json = await exportSessionsAsJSON();
+      const file = new File(Paths.cache, 'tremorsense_export.json');
+      if (file.exists) file.delete();
+      file.create();
+      file.write(json);
+      if (await Sharing.isAvailableAsync()) { await Sharing.shareAsync(file.uri); }
       else { await Share.share({ message: json, title: 'TremorSense Export' }); }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch { Alert.alert('Export Failed', 'Could not export data.'); }
+    } catch (e) {
+      console.error('JSON export error:', e);
+      Alert.alert('Export Failed', 'Could not export data.');
+    }
   };
 
   const handleExportCSV = async () => {
     try {
-      const csv = await exportSessionsAsCSV();
       const sessions = await loadAllSessions();
       if (sessions.length === 0) { Alert.alert('No Data', 'No sessions to export.'); return; }
-      const fileUri = FileSystem.documentDirectory + 'tremorsense_export.csv';
-      await FileSystem.writeAsStringAsync(fileUri, csv);
-      if (await Sharing.isAvailableAsync()) { await Sharing.shareAsync(fileUri); }
+      const csv = await exportSessionsAsCSV();
+      const file = new File(Paths.cache, 'tremorsense_export.csv');
+      if (file.exists) file.delete();
+      file.create();
+      file.write(csv);
+      if (await Sharing.isAvailableAsync()) { await Sharing.shareAsync(file.uri); }
       else { await Share.share({ message: csv, title: 'TremorSense Export' }); }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch { Alert.alert('Export Failed', 'Could not export data.'); }
+    } catch (e) {
+      console.error('CSV export error:', e);
+      Alert.alert('Export Failed', 'Could not export data.');
+    }
   };
 
   const handleLogout = () => {

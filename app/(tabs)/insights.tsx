@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { loadAllSessions } from '@/utils/storage';
@@ -199,7 +200,7 @@ const richTextStyles = StyleSheet.create({
   italic: { fontStyle: 'italic' },
 });
 
-// Oura-style embedded score card with bar chart
+// Embedded score card with FFT frequency info
 function ReadinessCard({ sessions, isDark }: { sessions: RecordingSession[]; isDark: boolean }) {
   if (sessions.length === 0) return null;
 
@@ -224,18 +225,21 @@ function ReadinessCard({ sessions, isDark }: { sessions: RecordingSession[]; isD
     }
   }
 
-  const dayLabels = recentSessions.map(s => {
-    const d = new Date(s.timestamp);
-    return ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
-  }).reverse();
+  // FFT analysis of latest session
+  const latestSession = sessions[0];
+  const freqInfo = latestSession.magnitude.length >= 16
+    ? analyzeFrequency(latestSession.magnitude)
+    : null;
 
-  const barScores = [...scores].reverse();
   const cardBg = isDark ? '#1A2830' : '#E8ECF0';
   const textColor = isDark ? '#E8E4DC' : '#1C1C1E';
   const secondaryColor = isDark ? '#8A8A8E' : '#6D6D72';
 
   return (
-    <View style={[rcStyles.card, { backgroundColor: cardBg }]}>
+    <Pressable
+      style={({ pressed }) => [rcStyles.card, { backgroundColor: cardBg }, pressed && { opacity: 0.8 }]}
+      onPress={() => router.push('/(tabs)/history')}
+    >
       <View style={rcStyles.topRow}>
         <View style={[rcStyles.iconCircle, { backgroundColor: isDark ? '#253038' : '#D8DDE2' }]}>
           <Ionicons name="pulse" size={18} color={scoreColor} />
@@ -259,22 +263,33 @@ function ReadinessCard({ sessions, isDark }: { sessions: RecordingSession[]; isD
             </View>
           ) : null}
         </View>
-        <View style={rcStyles.chartSection}>
-          <Text style={[rcStyles.chartMax, { color: secondaryColor }]}>100</Text>
-          <View style={rcStyles.barsRow}>
-            {barScores.map((s, i) => (
-              <View key={i} style={rcStyles.barCol}>
-                <View style={rcStyles.barTrack}>
-                  <View style={[rcStyles.barFill, { height: `${Math.max(s, 4)}%`, backgroundColor: isDark ? '#E8E4DC' : '#1C1C1E' }]} />
-                </View>
-                <Text style={[rcStyles.barLabel, { color: secondaryColor }]}>{dayLabels[i] || ''}</Text>
+        {/* FFT frequency info replacing the old bar chart */}
+        <View style={rcStyles.freqSection}>
+          {freqInfo && freqInfo.dominantFrequency > 0 ? (
+            <>
+              <View style={[rcStyles.freqBadge, { backgroundColor: '#7B61FF18' }]}>
+                <Text style={rcStyles.freqBadgeText}>FFT</Text>
               </View>
-            ))}
-          </View>
-          <Text style={[rcStyles.chartMin, { color: secondaryColor }]}>0</Text>
+              <Text style={[rcStyles.freqValue, { color: textColor }]}>
+                {freqInfo.dominantFrequency}
+                <Text style={[rcStyles.freqUnit, { color: secondaryColor }]}> Hz</Text>
+              </Text>
+              <Text style={[rcStyles.freqType, { color: secondaryColor }]} numberOfLines={2}>
+                {freqInfo.tremorTypeLabel}
+              </Text>
+              <View style={[rcStyles.confRow]}>
+                <View style={[rcStyles.confTrack, { backgroundColor: isDark ? '#0D0D0D' : '#D8DDE2' }]}>
+                  <View style={[rcStyles.confFill, { width: `${freqInfo.confidence * 100}%` }]} />
+                </View>
+                <Text style={[rcStyles.confText, { color: secondaryColor }]}>{Math.round(freqInfo.confidence * 100)}%</Text>
+              </View>
+            </>
+          ) : (
+            <Text style={[rcStyles.freqType, { color: secondaryColor }]}>No frequency data</Text>
+          )}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -291,14 +306,16 @@ const rcStyles = StyleSheet.create({
   scoreValue: { fontSize: 56, fontWeight: '200', letterSpacing: -2, lineHeight: 62 },
   trendPill: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, marginTop: 6, gap: 4 },
   trendText: { fontSize: 13, fontWeight: '600' },
-  chartSection: { alignItems: 'flex-end', width: 160 },
-  chartMax: { fontSize: 10, fontWeight: '500', marginBottom: 2 },
-  barsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 72 },
-  barCol: { alignItems: 'center', width: 14 },
-  barTrack: { width: 8, height: 72, justifyContent: 'flex-end' },
-  barFill: { width: '100%', minHeight: 3, borderRadius: 2 },
-  barLabel: { fontSize: 10, fontWeight: '500', marginTop: 4 },
-  chartMin: { fontSize: 10, fontWeight: '500', marginTop: 2 },
+  freqSection: { alignItems: 'flex-end', width: 140 },
+  freqBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginBottom: 6 },
+  freqBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 1, color: '#7B61FF' },
+  freqValue: { fontSize: 28, fontWeight: '200', letterSpacing: -1 },
+  freqUnit: { fontSize: 14, fontWeight: '400' },
+  freqType: { fontSize: 11, fontWeight: '500', textAlign: 'right', marginTop: 4 },
+  confRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, width: '100%' },
+  confTrack: { flex: 1, height: 3, borderRadius: 1.5, overflow: 'hidden' },
+  confFill: { height: '100%', borderRadius: 1.5, backgroundColor: '#7B61FF' },
+  confText: { fontSize: 10, fontWeight: '600' },
 });
 
 function SuggestionChips({ onChipPress, isDark }: { onChipPress: (text: string) => void; isDark: boolean }) {
