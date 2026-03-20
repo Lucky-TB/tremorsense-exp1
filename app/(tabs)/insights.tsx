@@ -11,6 +11,8 @@ import {
   Animated,
   UIManager,
   ActivityIndicator,
+  type StyleProp,
+  type TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -18,7 +20,6 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { loadAllSessions } from '@/utils/storage';
 import { getTremorScore } from '@/utils/signalProcessing';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { RecordingSession } from '@/types';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -26,6 +27,54 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '';
+console.log('API key loaded (last 6 chars):', GEMINI_API_KEY.slice(-6));
+
+// Explicit model+version pairs in priority order. v1beta supports systemInstruction; v1 inlines it below.
+// 2.0 / 1.5 / 1.0 model IDs are deprecated or removed from the Developer API — use 2.5 family.
+const GEMINI_ENDPOINTS = [
+  { version: 'v1beta', model: 'gemini-2.5-flash' },
+  { version: 'v1beta', model: 'gemini-2.5-flash-lite' },
+  { version: 'v1', model: 'gemini-2.5-flash' },
+  { version: 'v1', model: 'gemini-2.5-flash-lite' },
+] as const;
+
+async function generateWithGeminiREST(
+  apiKey: string,
+  contents: { role: string; parts: { text: string }[] }[],
+  systemInstruction: string,
+): Promise<string> {
+  const errors: string[] = [];
+  for (const { version, model } of GEMINI_ENDPOINTS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const body: Record<string, unknown> = {
+        contents: version === 'v1'
+          ? [{ role: 'user', parts: [{ text: `${systemInstruction}\n\n---\n\nConversation:` }] }, ...contents]
+          : contents,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+      };
+      if (version === 'v1beta') {
+        body.systemInstruction = { parts: [{ text: systemInstruction }] };
+      }
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        errors.push(`${model} (${version}): ${data?.error?.message || res.statusText}`);
+        continue;
+      }
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text != null) return text;
+      errors.push(`${model} (${version}): no text in response`);
+    } catch (e) {
+      errors.push(`${model} (${version}): ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  throw new Error(errors.join(' | '));
+}
 
 function getScoreColor(score: number): string {
   if (score <= 25) return '#5CC5AB';
@@ -77,6 +126,68 @@ Important:
 - Keep responses focused and under 150 words unless more detail is genuinely needed.
 - Do not make up data or scores the user hasn't recorded.`;
 }
+
+type InlineSeg = { type: 'text' | 'bold' | 'italic'; value: string };
+
+function parseItalicSegments(s: string): InlineSeg[] {
+  if (!s) return [];
+  const out: InlineSeg[] = [];
+  const itRe = /\*([^*]+)\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = itRe.exec(s)) !== null) {
+    if (m.index > last) out.push({ type: 'text', value: s.slice(last, m.index) });
+    out.push({ type: 'italic', value: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push({ type: 'text', value: s.slice(last) });
+  return out.length ? out : [{ type: 'text', value: s }];
+}
+
+function parseInlineMarkdown(line: string): InlineSeg[] {
+  const merged: InlineSeg[] = [];
+  const boldRe = /\*\*([^*]+)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = boldRe.exec(line)) !== null) {
+    if (m.index > last) merged.push(...parseItalicSegments(line.slice(last, m.index)));
+    merged.push({ type: 'bold', value: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) merged.push(...parseItalicSegments(line.slice(last)));
+  return merged.length ? merged : parseItalicSegments(line);
+}
+
+function renderRichInline(text: string, baseStyle: StyleProp<TextStyle>, keyPrefix: string): React.ReactElement {
+  const segs = parseInlineMarkdown(text);
+  const children = segs.map((seg, i) => {
+    if (seg.type === 'bold') {
+      return (
+        <Text key={`${keyPrefix}-${i}`} style={[baseStyle, richTextStyles.strong]}>
+          {seg.value}
+        </Text>
+      );
+    }
+    if (seg.type === 'italic') {
+      return (
+        <Text key={`${keyPrefix}-${i}`} style={[baseStyle, richTextStyles.italic]}>
+          {seg.value}
+        </Text>
+      );
+    }
+    return (
+      <Text key={`${keyPrefix}-${i}`}>
+        {seg.value}
+      </Text>
+    );
+  });
+  return <Text style={baseStyle}>{children}</Text>;
+}
+
+const richTextStyles = StyleSheet.create({
+  strong: { fontWeight: '700' },
+  italic: { fontStyle: 'italic' },
+});
 
 // Oura-style embedded score card with bar chart
 function ReadinessCard({ sessions, isDark }: { sessions: RecordingSession[]; isDark: boolean }) {
@@ -216,7 +327,7 @@ export default function InsightsScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const inputHeight = useRef(new Animated.Value(44)).current;
   const contentHeightRef = useRef(0);
-  const chatRef = useRef<any>(null);
+  const historyRef = useRef<{ role: string; parts: { text: string }[] }[]>([]);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -236,17 +347,6 @@ export default function InsightsScreen() {
     }, [])
   );
 
-  // Initialize Gemini chat session when sessions load
-  useEffect(() => {
-    if (!GEMINI_API_KEY) return;
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    chatRef.current = model.startChat({
-      systemInstruction: buildSystemPrompt(latestSessions),
-      history: [],
-    });
-  }, [latestSessions]);
-
   useEffect(() => {
     const lineCount = (input.match(/\n/g) || []).length + 1;
     const targetHeight = Math.min(44 + lineCount * 22, 120);
@@ -261,6 +361,11 @@ export default function InsightsScreen() {
     const trimmed = (text ?? input).trim();
     if (!trimmed || isLoading) return;
 
+    if (!GEMINI_API_KEY) {
+      setMessages((prev) => [...prev, { id: `ai-err-${Date.now()}`, role: 'ai', text: 'Gemini API key not configured. Add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.' }]);
+      return;
+    }
+
     const userMsg: Message = { id: `user-${Date.now()}`, role: 'user', text: trimmed };
     setInput('');
     inputHeight.setValue(44);
@@ -268,26 +373,21 @@ export default function InsightsScreen() {
     setIsLoading(true);
     [0, 50, 150].forEach((ms) => setTimeout(scrollToEnd, ms));
 
+    historyRef.current = [...historyRef.current, { role: 'user', parts: [{ text: trimmed }] }];
+
     try {
-      let responseText = '';
-
-      if (chatRef.current && GEMINI_API_KEY) {
-        const result = await chatRef.current.sendMessage(trimmed);
-        responseText = result.response.text();
-      } else {
-        responseText = 'Gemini API key not configured. Add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.';
-      }
-
-      const aiMsg: Message = { id: `ai-${Date.now()}`, role: 'ai', text: responseText };
-      setMessages((prev) => [...prev, aiMsg]);
+      const responseText = await generateWithGeminiREST(
+        GEMINI_API_KEY,
+        historyRef.current,
+        buildSystemPrompt(latestSessions),
+      );
+      historyRef.current = [...historyRef.current, { role: 'model', parts: [{ text: responseText }] }];
+      setMessages((prev) => [...prev, { id: `ai-${Date.now()}`, role: 'ai', text: responseText }]);
       [0, 50, 150, 300].forEach((ms) => setTimeout(scrollToEnd, ms));
     } catch (err) {
-      const errMsg: Message = {
-        id: `ai-err-${Date.now()}`,
-        role: 'ai',
-        text: 'Sorry, I had trouble connecting. Please check your internet connection and try again.',
-      };
-      setMessages((prev) => [...prev, errMsg]);
+      console.error('Gemini API error:', err);
+      const errDetail = err instanceof Error ? err.message : String(err);
+      setMessages((prev) => [...prev, { id: `ai-err-${Date.now()}`, role: 'ai', text: `Error: ${errDetail}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -296,16 +396,8 @@ export default function InsightsScreen() {
   const handleNewChat = () => {
     setInput('');
     inputHeight.setValue(44);
+    historyRef.current = [];
     setMessages([{ id: `welcome-${Date.now()}`, role: 'ai', text: WELCOME_TEXT }]);
-    // Reinit chat
-    if (GEMINI_API_KEY) {
-      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      chatRef.current = model.startChat({
-        systemInstruction: buildSystemPrompt(latestSessions),
-        history: [],
-      });
-    }
     setTimeout(() => scrollRef.current?.scrollTo({ y: 0, animated: true }), 50);
   };
 
@@ -331,14 +423,16 @@ export default function InsightsScreen() {
       const isBullet = /^[•\-]\s*/.test(line) || /^\d+\.\s*/.test(line);
       const trimmed = line.replace(/^[•\-]\s*/, '').replace(/^\d+\.\s*/, '');
       if (isBullet && trimmed) {
+        const rowK = key++;
         parts.push(
-          <View key={key++} style={styles.bulletRow}>
+          <View key={rowK} style={styles.bulletRow}>
             <Text style={[styles.bulletDot, { color: textColor }]}>{'\u2022'}</Text>
-            <Text style={[styles.bulletText, { color: textColor }]}>{trimmed}</Text>
+            {renderRichInline(trimmed, [styles.bulletText, { color: textColor }], `b-${rowK}`)}
           </View>
         );
       } else if (line.trim()) {
-        parts.push(<Text key={key++} style={[styles.aiLine, { color: textColor }]}>{line}</Text>);
+        const lineK = key++;
+        parts.push(renderRichInline(line, [styles.aiLine, { color: textColor }], `l-${lineK}`));
       } else {
         parts.push(<View key={key++} style={styles.paragraphGap} />);
       }

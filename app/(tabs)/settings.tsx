@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Alert,
   Share,
   Modal,
@@ -33,6 +32,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { generateDoctorReport } from '@/utils/reportGenerator';
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
 
@@ -67,6 +67,21 @@ export default function SettingsScreen() {
     setSettings(newSettings);
     await saveSettings(newSettings);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleGenerateReport = async () => {
+    try {
+      const sessions = await loadAllSessions();
+      if (sessions.length === 0) {
+        Alert.alert('No Data', 'Record at least one session before generating a report.');
+        return;
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await generateDoctorReport(sessions, profile);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert('Report Failed', 'Could not generate the report. Please try again.');
+    }
   };
 
   const handleExportJSON = async () => {
@@ -170,10 +185,14 @@ export default function SettingsScreen() {
   const inputBg = isDark ? '#0D0D0D' : '#F0EDE8';
   const inputBorder = isDark ? '#2A3438' : '#E5E5E0';
   const dangerColor = '#E85D5D';
+  const subtleBg = isDark ? '#141C20' : '#EDEDEA';
 
   const userName = profile?.name || 'User';
   const userEmail = auth?.currentUser?.email || '';
   const initial = userName.charAt(0).toUpperCase();
+
+  const themeLabel = preference === 'auto' ? 'System' : preference === 'dark' ? 'Dark' : 'Light';
+  const themeIcon = preference === 'dark' ? 'moon' : preference === 'light' ? 'sunny' : 'phone-portrait-outline';
 
   if (!settings) {
     return (
@@ -199,68 +218,97 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Card */}
-        <View style={[styles.profileCard, { backgroundColor: cardBg }]}>
-          <View style={[styles.profileAvatar, { backgroundColor: accent }]}>
-            <Text style={styles.profileInitial}>{initial}</Text>
+        {/* Profile Hero */}
+        <View style={styles.profileHero}>
+          <View style={[styles.avatarRing, { borderColor: accent + '30' }]}>
+            <View style={[styles.profileAvatar, { backgroundColor: accent }]}>
+              <Text style={styles.profileInitial}>{initial}</Text>
+            </View>
           </View>
-          <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: textColor }]}>{userName}</Text>
-            {userEmail ? (
-              <Text style={[styles.profileEmail, { color: secondaryColor }]}>{userEmail}</Text>
-            ) : null}
-          </View>
+          <Text style={[styles.profileName, { color: textColor }]}>{userName}</Text>
+          {userEmail ? (
+            <Text style={[styles.profileEmail, { color: secondaryColor }]}>{userEmail}</Text>
+          ) : null}
+          <Pressable
+            style={({ pressed }) => [
+              styles.editProfileButton,
+              { borderColor: accent },
+              pressed && { opacity: 0.7 },
+            ]}
+            onPress={openEditProfile}
+          >
+            <Ionicons name="pencil-outline" size={14} color={accent} />
+            <Text style={[styles.editProfileText, { color: accent }]}>Edit Profile</Text>
+          </Pressable>
         </View>
 
-        {/* Edit Profile Button */}
+        {/* Doctor Report */}
+        <Text style={[styles.sectionLabel, { color: secondaryColor }]}>DOCTOR REPORT</Text>
         <Pressable
           style={({ pressed }) => [
-            styles.editProfileButton,
-            { backgroundColor: accent },
+            styles.reportCard,
+            { backgroundColor: cardBg },
             pressed && { opacity: 0.85 },
           ]}
-          onPress={openEditProfile}
+          onPress={handleGenerateReport}
         >
-          <Text style={styles.editProfileText}>Edit Profile</Text>
+          <View style={[styles.reportIconCircle, { backgroundColor: accent + '15' }]}>
+            <Ionicons name="document-text" size={24} color={accent} />
+          </View>
+          <View style={styles.reportTextWrap}>
+            <Text style={[styles.reportTitle, { color: textColor }]}>Generate PDF Report</Text>
+            <Text style={[styles.reportSubtitle, { color: secondaryColor }]}>
+              Professional tremor history report to share with your healthcare provider
+            </Text>
+          </View>
+          <View style={[styles.reportArrow, { backgroundColor: accent }]}>
+            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+          </View>
         </Pressable>
 
-        {/* Menu Items */}
+        {/* Raw Data Export */}
+        <Text style={[styles.sectionLabel, { color: secondaryColor }]}>RAW DATA</Text>
         <View style={[styles.menuSection, { backgroundColor: cardBg }]}>
           <MenuRow
-            icon="download-outline"
-            label="Export Data (JSON)"
+            icon="code-slash-outline"
+            label="Export JSON"
+            subtitle="Full session data"
             onPress={handleExportJSON}
             textColor={textColor}
             secondaryColor={secondaryColor}
             borderColor={borderColor}
+            accent={accent}
           />
           <MenuRow
-            icon="document-text-outline"
-            label="Export Data (CSV)"
+            icon="grid-outline"
+            label="Export CSV"
+            subtitle="Spreadsheet format"
             onPress={handleExportCSV}
             textColor={textColor}
             secondaryColor={secondaryColor}
             borderColor={borderColor}
+            accent={accent}
+            last
           />
+        </View>
+
+        {/* Preferences Section */}
+        <Text style={[styles.sectionLabel, { color: secondaryColor }]}>PREFERENCES</Text>
+        <View style={[styles.menuSection, { backgroundColor: cardBg }]}>
           <MenuRow
-            icon="settings-outline"
+            icon="options-outline"
             label="Scan Settings"
+            subtitle="Sampling rate & duration"
             onPress={() => setScanSettingsVisible(true)}
             textColor={textColor}
             secondaryColor={secondaryColor}
             borderColor={borderColor}
+            accent={accent}
           />
           <MenuRow
-            icon="shield-checkmark-outline"
-            label="Privacy & Ethics"
-            onPress={() => setPrivacyModalVisible(true)}
-            textColor={textColor}
-            secondaryColor={secondaryColor}
-            borderColor={borderColor}
-          />
-          <MenuRow
-            icon="color-palette-outline"
-            label={`Theme: ${preference === 'auto' ? 'System' : preference === 'dark' ? 'Dark' : 'Light'}`}
+            icon={themeIcon as any}
+            label="Appearance"
+            subtitle={themeLabel}
             onPress={() => {
               const next: ThemePreference = preference === 'light' ? 'dark' : preference === 'dark' ? 'auto' : 'light';
               setPreference(next);
@@ -269,30 +317,56 @@ export default function SettingsScreen() {
             textColor={textColor}
             secondaryColor={secondaryColor}
             borderColor={borderColor}
+            accent={accent}
+            last
           />
+        </View>
+
+        {/* About Section */}
+        <Text style={[styles.sectionLabel, { color: secondaryColor }]}>ABOUT</Text>
+        <View style={[styles.menuSection, { backgroundColor: cardBg }]}>
+          <MenuRow
+            icon="shield-checkmark-outline"
+            label="Privacy & Ethics"
+            subtitle="How your data is handled"
+            onPress={() => setPrivacyModalVisible(true)}
+            textColor={textColor}
+            secondaryColor={secondaryColor}
+            borderColor={borderColor}
+            accent={accent}
+            last
+          />
+        </View>
+
+        {/* Danger Zone */}
+        <Text style={[styles.sectionLabel, { color: secondaryColor }]}>DANGER ZONE</Text>
+        <View style={[styles.menuSection, { backgroundColor: cardBg }]}>
           <MenuRow
             icon="trash-outline"
             label="Clear All Data"
+            subtitle="Permanently delete all sessions"
             onPress={handleClearData}
             textColor={dangerColor}
             secondaryColor={secondaryColor}
             borderColor={borderColor}
-            last
+            accent={accent}
             danger
           />
+          <Pressable
+            style={({ pressed }) => [styles.logoutRow, { borderTopWidth: 0.5, borderTopColor: borderColor }, pressed && { opacity: 0.7 }]}
+            onPress={handleLogout}
+          >
+            <Ionicons name="log-out-outline" size={20} color={dangerColor} />
+            <Text style={[styles.logoutText, { color: dangerColor }]}>Log Out</Text>
+          </Pressable>
         </View>
 
-        {/* Log out */}
-        <Pressable
-          style={({ pressed }) => [styles.logoutRow, { backgroundColor: cardBg }, pressed && { opacity: 0.8 }]}
-          onPress={handleLogout}
-        >
-          <Ionicons name="log-out-outline" size={22} color={dangerColor} />
-          <Text style={[styles.logoutText, { color: dangerColor }]}>Log out</Text>
-        </Pressable>
-
-        {/* Version */}
-        <Text style={[styles.versionText, { color: secondaryColor }]}>TremorSense v1.0.0</Text>
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={[styles.versionText, { color: secondaryColor }]}>TremorSense v1.0.0</Text>
+          <View style={[styles.footerDot, { backgroundColor: secondaryColor + '40' }]} />
+          <Text style={[styles.versionText, { color: secondaryColor }]}>Made with care</Text>
+        </View>
       </ScrollView>
 
       {/* ===== Edit Profile Modal ===== */}
@@ -312,17 +386,18 @@ export default function SettingsScreen() {
             <ScrollView style={styles.modalContent} keyboardShouldPersistTaps="handled">
               {/* Avatar */}
               <View style={styles.editAvatarSection}>
-                <View style={[styles.editAvatar, { backgroundColor: accent }]}>
-                  <Text style={styles.editAvatarLetter}>
-                    {editName.trim().charAt(0).toUpperCase() || '?'}
-                  </Text>
+                <View style={[styles.avatarRing, { borderColor: accent + '30' }]}>
+                  <View style={[styles.editAvatar, { backgroundColor: accent }]}>
+                    <Text style={styles.editAvatarLetter}>
+                      {editName.trim().charAt(0).toUpperCase() || '?'}
+                    </Text>
+                  </View>
                 </View>
               </View>
 
               {/* Personal Section */}
+              <Text style={[styles.sectionLabel, { color: secondaryColor, marginLeft: 4 }]}>PERSONAL</Text>
               <View style={[styles.editCard, { backgroundColor: cardBg }]}>
-                <Text style={[styles.editSectionLabel, { color: secondaryColor }]}>Personal</Text>
-
                 <View style={styles.editInputGroup}>
                   <Text style={[styles.editFieldLabel, { color: secondaryColor }]}>NAME</Text>
                   <View style={styles.editInputRow}>
@@ -335,7 +410,7 @@ export default function SettingsScreen() {
                       autoCapitalize="words"
                     />
                     {editName.trim().length > 0 && (
-                      <Ionicons name="checkmark" size={20} color={accent} style={styles.editCheckIcon} />
+                      <Ionicons name="checkmark-circle" size={20} color={accent} style={styles.editCheckIcon} />
                     )}
                   </View>
                 </View>
@@ -363,7 +438,7 @@ export default function SettingsScreen() {
                   </View>
                 </View>
 
-                <View style={styles.editInputGroup}>
+                <View style={[styles.editInputGroup, { marginBottom: 0 }]}>
                   <Text style={[styles.editFieldLabel, { color: secondaryColor }]}>BIRTHDAY</Text>
                   <View style={styles.editInputRow}>
                     <TextInput
@@ -380,23 +455,27 @@ export default function SettingsScreen() {
                 </View>
               </View>
 
-              {/* Email & Password (read-only display) */}
+              {/* Email (read-only) */}
               {userEmail ? (
-                <View style={[styles.editCard, { backgroundColor: cardBg }]}>
-                  <Text style={[styles.editSectionLabel, { color: secondaryColor }]}>Email</Text>
-                  <View style={styles.editInputGroup}>
-                    <View style={styles.editInputRow}>
-                      <TextInput
-                        style={[styles.editInput, { backgroundColor: inputBg, color: secondaryColor, borderColor: inputBorder }]}
-                        value={userEmail}
-                        editable={false}
-                      />
+                <>
+                  <Text style={[styles.sectionLabel, { color: secondaryColor, marginLeft: 4 }]}>ACCOUNT</Text>
+                  <View style={[styles.editCard, { backgroundColor: cardBg }]}>
+                    <View style={[styles.editInputGroup, { marginBottom: 0 }]}>
+                      <Text style={[styles.editFieldLabel, { color: secondaryColor }]}>EMAIL</Text>
+                      <View style={styles.editInputRow}>
+                        <TextInput
+                          style={[styles.editInput, { backgroundColor: inputBg, color: secondaryColor, borderColor: inputBorder }]}
+                          value={userEmail}
+                          editable={false}
+                        />
+                        <Ionicons name="lock-closed-outline" size={18} color={secondaryColor} style={styles.editCheckIcon} />
+                      </View>
                     </View>
                   </View>
-                </View>
+                </>
               ) : null}
 
-              {/* Save button inside modal */}
+              {/* Save button */}
               <Pressable
                 onPress={handleSaveProfile}
                 style={({ pressed }) => [
@@ -405,7 +484,7 @@ export default function SettingsScreen() {
                   pressed && { opacity: 0.85 },
                 ]}
               >
-                <Text style={styles.modalSaveButtonText}>Save</Text>
+                <Text style={styles.modalSaveButtonText}>Save Changes</Text>
               </Pressable>
             </ScrollView>
           </KeyboardAvoidingView>
@@ -423,53 +502,68 @@ export default function SettingsScreen() {
             <View style={{ width: 24 }} />
           </View>
           <ScrollView style={styles.modalContent}>
+            <Text style={[styles.sectionLabel, { color: secondaryColor, marginLeft: 4 }]}>SAMPLING RATE</Text>
             <View style={[styles.editCard, { backgroundColor: cardBg }]}>
-              <Text style={[styles.editSectionLabel, { color: secondaryColor }]}>Sampling Rate</Text>
+              <Text style={[styles.settingDescription, { color: secondaryColor }]}>
+                Higher rates capture more detail but use more battery.
+              </Text>
               <View style={styles.pillRow}>
                 {([
-                  { rate: 'low' as SamplingRate, label: '20Hz' },
-                  { rate: 'medium' as SamplingRate, label: '50Hz' },
-                  { rate: 'high' as SamplingRate, label: '100Hz' },
-                ]).map(({ rate, label }) => (
-                  <Pressable
-                    key={rate}
-                    style={[
-                      styles.pill,
-                      {
-                        backgroundColor: settings.samplingRate === rate ? accent : 'transparent',
-                        borderColor: settings.samplingRate === rate ? accent : borderColor,
-                      },
-                    ]}
-                    onPress={() => updateSettings({ samplingRate: rate })}
-                  >
-                    <Text style={[styles.pillText, { color: settings.samplingRate === rate ? '#FFFFFF' : textColor }]}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                ))}
+                  { rate: 'low' as SamplingRate, label: '20 Hz', desc: 'Battery saver' },
+                  { rate: 'medium' as SamplingRate, label: '50 Hz', desc: 'Recommended' },
+                  { rate: 'high' as SamplingRate, label: '100 Hz', desc: 'High detail' },
+                ]).map(({ rate, label, desc }) => {
+                  const isActive = settings.samplingRate === rate;
+                  return (
+                    <Pressable
+                      key={rate}
+                      style={[
+                        styles.settingPill,
+                        {
+                          backgroundColor: isActive ? accent : 'transparent',
+                          borderColor: isActive ? accent : borderColor,
+                        },
+                      ]}
+                      onPress={() => updateSettings({ samplingRate: rate })}
+                    >
+                      <Text style={[styles.settingPillLabel, { color: isActive ? '#FFFFFF' : textColor }]}>
+                        {label}
+                      </Text>
+                      <Text style={[styles.settingPillDesc, { color: isActive ? '#FFFFFF99' : secondaryColor }]}>
+                        {desc}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
 
+            <Text style={[styles.sectionLabel, { color: secondaryColor, marginLeft: 4 }]}>DURATION</Text>
             <View style={[styles.editCard, { backgroundColor: cardBg }]}>
-              <Text style={[styles.editSectionLabel, { color: secondaryColor }]}>Duration</Text>
+              <Text style={[styles.settingDescription, { color: secondaryColor }]}>
+                Longer scans give more accurate readings.
+              </Text>
               <View style={styles.pillRow}>
-                {[5, 10, 15, 30].map((d) => (
-                  <Pressable
-                    key={d}
-                    style={[
-                      styles.pill,
-                      {
-                        backgroundColor: settings.recordingDuration === d ? accent : 'transparent',
-                        borderColor: settings.recordingDuration === d ? accent : borderColor,
-                      },
-                    ]}
-                    onPress={() => updateSettings({ recordingDuration: d })}
-                  >
-                    <Text style={[styles.pillText, { color: settings.recordingDuration === d ? '#FFFFFF' : textColor }]}>
-                      {d}s
-                    </Text>
-                  </Pressable>
-                ))}
+                {[5, 10, 15, 30].map((d) => {
+                  const isActive = settings.recordingDuration === d;
+                  return (
+                    <Pressable
+                      key={d}
+                      style={[
+                        styles.durationPill,
+                        {
+                          backgroundColor: isActive ? accent : 'transparent',
+                          borderColor: isActive ? accent : borderColor,
+                        },
+                      ]}
+                      onPress={() => updateSettings({ recordingDuration: d })}
+                    >
+                      <Text style={[styles.durationPillLabel, { color: isActive ? '#FFFFFF' : textColor }]}>
+                        {d}s
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
             </View>
           </ScrollView>
@@ -487,17 +581,18 @@ export default function SettingsScreen() {
             <View style={{ width: 24 }} />
           </View>
           <ScrollView style={styles.modalContent}>
-            <PrivacySection title="WHAT THIS APP DOES" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor}
+            <PrivacySection title="WHAT THIS APP DOES" icon="analytics-outline" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor} accent={accent}
               text="TremorSense measures motion using your device's built-in sensors (accelerometer and gyroscope). It records, stores, analyzes, and visualizes this motion data to help you observe patterns over time."
             />
-            <PrivacySection title="WHAT THIS APP DOES NOT DO" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor}
+            <PrivacySection title="WHAT THIS APP DOES NOT DO" icon="close-circle-outline" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor} accent={accent}
               text="This app does NOT diagnose any medical condition, provide medical advice, predict or treat diseases, connect to external servers, or share your data with third parties."
             />
-            <PrivacySection title="DATA PRIVACY" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor}
+            <PrivacySection title="DATA PRIVACY" icon="lock-closed-outline" cardBg={cardBg} secondaryColor={secondaryColor} textColor={textColor} accent={accent}
               text="All data is stored locally on your device using AsyncStorage. No data is sent to external servers. You can export or delete your data at any time through Settings."
             />
-            <PrivacySection title="IMPORTANT DISCLAIMER" cardBg={cardBg} secondaryColor={secondaryColor} textColor={dangerColor}
+            <PrivacySection title="IMPORTANT DISCLAIMER" icon="warning-outline" cardBg={cardBg} secondaryColor={dangerColor} textColor={textColor} accent={accent}
               text="This app is for informational and observational purposes only. If you have concerns about your health, please consult with a qualified healthcare professional."
+              highlight
             />
           </ScrollView>
         </View>
@@ -506,8 +601,8 @@ export default function SettingsScreen() {
   );
 }
 
-function MenuRow({ icon, label, onPress, textColor, secondaryColor, borderColor, last, danger }: {
-  icon: string; label: string; onPress: () => void; textColor: string; secondaryColor: string; borderColor: string; last?: boolean; danger?: boolean;
+function MenuRow({ icon, label, subtitle, onPress, textColor, secondaryColor, borderColor, accent, last, danger }: {
+  icon: string; label: string; subtitle?: string; onPress: () => void; textColor: string; secondaryColor: string; borderColor: string; accent: string; last?: boolean; danger?: boolean;
 }) {
   return (
     <Pressable
@@ -515,22 +610,28 @@ function MenuRow({ icon, label, onPress, textColor, secondaryColor, borderColor,
       onPress={onPress}
     >
       <View style={styles.menuRowLeft}>
-        <View style={[styles.menuIconCircle, { backgroundColor: (danger ? '#E85D5D' : secondaryColor) + '15' }]}>
-          <Ionicons name={icon as any} size={20} color={danger ? textColor : secondaryColor} />
+        <View style={[styles.menuIconCircle, { backgroundColor: (danger ? '#E85D5D' : accent) + '12' }]}>
+          <Ionicons name={icon as any} size={20} color={danger ? '#E85D5D' : accent} />
         </View>
-        <Text style={[styles.menuRowLabel, { color: textColor }]}>{label}</Text>
+        <View style={styles.menuTextWrap}>
+          <Text style={[styles.menuRowLabel, { color: textColor }]}>{label}</Text>
+          {subtitle ? <Text style={[styles.menuRowSub, { color: secondaryColor }]}>{subtitle}</Text> : null}
+        </View>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={secondaryColor} />
+      <Ionicons name="chevron-forward" size={16} color={secondaryColor + '80'} />
     </Pressable>
   );
 }
 
-function PrivacySection({ title, text, cardBg, secondaryColor, textColor }: {
-  title: string; text: string; cardBg: string; secondaryColor: string; textColor: string;
+function PrivacySection({ title, text, icon, cardBg, secondaryColor, textColor, accent, highlight }: {
+  title: string; text: string; icon: string; cardBg: string; secondaryColor: string; textColor: string; accent: string; highlight?: boolean;
 }) {
   return (
-    <View style={[styles.privacyCard, { backgroundColor: cardBg }]}>
-      <Text style={[styles.privacyLabel, { color: secondaryColor }]}>{title}</Text>
+    <View style={[styles.privacyCard, { backgroundColor: cardBg, borderLeftColor: highlight ? '#E85D5D' : accent, borderLeftWidth: 3 }]}>
+      <View style={styles.privacyHeader}>
+        <Ionicons name={icon as any} size={16} color={secondaryColor} />
+        <Text style={[styles.privacyLabel, { color: secondaryColor }]}>{title}</Text>
+      </View>
       <Text style={[styles.privacyText, { color: textColor }]}>{text}</Text>
     </View>
   );
@@ -539,7 +640,7 @@ function PrivacySection({ title, text, cardBg, secondaryColor, textColor }: {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollView: { flex: 1 },
-  contentContainer: { padding: 16, paddingBottom: 48 },
+  contentContainer: { paddingHorizontal: 16, paddingBottom: 48 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -549,62 +650,113 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
   },
   headerSide: { width: 40 },
-  headerTitle: { fontSize: 16, fontWeight: '600', letterSpacing: 0.2 },
+  headerTitle: { fontSize: 17, fontWeight: '600', letterSpacing: 0.2 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { fontSize: 15 },
 
-  // Profile card
-  profileCard: {
-    alignItems: 'center',
-    borderRadius: 16,
-    padding: 24,
-    paddingBottom: 16,
-    marginBottom: 0,
+  // Section labels
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginTop: 24,
+    marginBottom: 8,
+    marginLeft: 8,
   },
-  profileAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+
+  // Profile hero
+  profileHero: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 8,
+  },
+  avatarRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
+  },
+  profileAvatar: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   profileInitial: {
     fontSize: 34,
-    fontWeight: '700',
+    fontWeight: '300',
     color: '#FFFFFF',
-  },
-  profileInfo: {
-    alignItems: 'center',
+    letterSpacing: -1,
   },
   profileName: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 2,
+    fontSize: 24,
+    fontWeight: '300',
+    letterSpacing: -0.5,
+    marginBottom: 4,
   },
   profileEmail: {
     fontSize: 14,
+    fontWeight: '400',
+    marginBottom: 16,
   },
-
-  // Edit profile button
   editProfileButton: {
-    marginHorizontal: 40,
-    marginTop: 12,
-    marginBottom: 20,
-    borderRadius: 10,
-    paddingVertical: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
   },
   editProfileText: {
-    color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
+  },
+
+  // Report card
+  reportCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    padding: 16,
+    gap: 14,
+  },
+  reportIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportTextWrap: {
+    flex: 1,
+  },
+  reportTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  reportSubtitle: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 17,
+  },
+  reportArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Menu section
   menuSection: {
     borderRadius: 16,
-    marginBottom: 12,
+    overflow: 'hidden',
   },
   menuRow: {
     flexDirection: 'row',
@@ -617,17 +769,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
+    flex: 1,
   },
   menuIconCircle: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  menuTextWrap: {
+    flex: 1,
   },
   menuRowLabel: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  menuRowSub: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 1,
   },
 
   // Logout
@@ -636,20 +797,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    borderRadius: 16,
-    paddingVertical: 16,
-    marginBottom: 16,
+    paddingVertical: 14,
   },
   logoutText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
 
-  // Version
-  versionText: {
-    textAlign: 'center',
-    fontSize: 12,
+  // Footer
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 32,
     marginBottom: 8,
+  },
+  footerDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+  },
+  versionText: {
+    fontSize: 12,
+    fontWeight: '400',
   },
 
   // Modal shared
@@ -662,7 +833,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 0.5,
   },
-  modalTitle: { fontSize: 16, fontWeight: '600' },
+  modalTitle: { fontSize: 17, fontWeight: '600' },
   modalSaveText: { fontSize: 16, fontWeight: '600' },
   modalContent: { flex: 1, padding: 16 },
 
@@ -672,35 +843,31 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
   editAvatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     alignItems: 'center',
     justifyContent: 'center',
   },
   editAvatarLetter: {
-    fontSize: 38,
-    fontWeight: '700',
+    fontSize: 36,
+    fontWeight: '300',
     color: '#FFFFFF',
+    letterSpacing: -1,
   },
   editCard: {
     borderRadius: 16,
     padding: 18,
     marginBottom: 12,
   },
-  editSectionLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
   editInputGroup: {
-    marginBottom: 16,
+    marginBottom: 18,
   },
   editFieldLabel: {
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1,
-    marginBottom: 6,
+    marginBottom: 8,
     marginLeft: 2,
   },
   editInputRow: {
@@ -708,7 +875,7 @@ const styles = StyleSheet.create({
   },
   editInput: {
     borderWidth: 1.5,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
     fontSize: 15,
@@ -726,7 +893,7 @@ const styles = StyleSheet.create({
   editGenderPill: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1.5,
     alignItems: 'center',
   },
@@ -738,7 +905,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 17,
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 8,
     marginBottom: 40,
   },
   modalSaveButtonText: {
@@ -747,20 +914,47 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Scan settings pills
+  // Scan settings
+  settingDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 14,
+  },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  pill: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    minWidth: 70,
+  settingPill: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    minWidth: 90,
     alignItems: 'center',
   },
-  pillText: { fontSize: 13, fontWeight: '600' },
+  settingPillLabel: { fontSize: 15, fontWeight: '600' },
+  settingPillDesc: { fontSize: 11, fontWeight: '400', marginTop: 2 },
+  durationPill: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  durationPillLabel: { fontSize: 15, fontWeight: '600' },
 
   // Privacy
-  privacyCard: { borderRadius: 16, padding: 18, marginBottom: 12 },
-  privacyLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 10 },
+  privacyCard: {
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+  },
+  privacyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  privacyLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   privacyText: { fontSize: 15, lineHeight: 24 },
 });
