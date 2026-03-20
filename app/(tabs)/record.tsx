@@ -2,7 +2,8 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useRecording } from "@/hooks/useRecording";
 import type { AppSettings, RecordingSession } from "@/types";
 import { loadSettings } from "@/utils/storage";
-import { getTremorScore, getTremorScoreLabel } from "@/utils/signalProcessing";
+import { getTremorScore, getTremorScoreLabel, calculateStats, calculateMagnitudeArray, analyzeFrequency, samplingRateToHz } from "@/utils/signalProcessing";
+import type { FrequencyAnalysis } from "@/utils/signalProcessing";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -212,6 +213,153 @@ const vitalStyles = StyleSheet.create({
   },
 });
 
+const freqStyles = StyleSheet.create({
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 8,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  headerInfo: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  mlBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  freqHero: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 8,
+  },
+  freqValue: {
+    fontSize: 44,
+    fontWeight: '200',
+    letterSpacing: -2,
+  },
+  freqUnit: {
+    fontSize: 18,
+    fontWeight: '400',
+  },
+  classificationPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+    marginBottom: 16,
+  },
+  classificationText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  confidenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  confLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    width: 72,
+  },
+  confTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  confFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  confValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    width: 36,
+    textAlign: 'right',
+  },
+  bandsSection: {
+    marginTop: 4,
+  },
+  bandsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  bandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  bandLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    width: 80,
+  },
+  bandTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  bandFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  bandPct: {
+    fontSize: 11,
+    fontWeight: '600',
+    width: 32,
+    textAlign: 'right',
+  },
+  disclaimer: {
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 14,
+    fontStyle: 'italic',
+  },
+  liveFreqRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  liveFreqLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  liveFreqValue: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  liveFreqType: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+});
+
 export default function RecordScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -230,6 +378,7 @@ export default function RecordScreen() {
     isAvailable,
     startRecording,
     accelerometerData,
+    readings,
   } = useRecording(
     settings?.samplingRate ?? "medium",
     settings?.recordingDuration ?? 10,
@@ -256,6 +405,13 @@ export default function RecordScreen() {
     lastResult != null &&
     lastResult.stats.variability >= SHAKING_VARIABILITY_THRESHOLD;
 
+  // FFT-based frequency analysis — runs when a result is available
+  const frequencyAnalysis: FrequencyAnalysis | null = useMemo(() => {
+    if (!lastResult || lastResult.magnitude.length < 16) return null;
+    const hz = samplingRateToHz(settings?.samplingRate ?? 'medium');
+    return analyzeFrequency(lastResult.magnitude, hz);
+  }, [lastResult, settings?.samplingRate]);
+
   const dotPosition = useMemo(() => {
     if (!accelerometerData || !isRecording || countdown !== null) {
       return { dx: 0, dy: 0 };
@@ -264,6 +420,34 @@ export default function RecordScreen() {
     const dy = -accelerometerData.y * ACCEL_SCALE;
     return clampOffset(dx, dy);
   }, [accelerometerData, isRecording, countdown]);
+
+  // Live tremor score computed from readings collected so far
+  const liveScore = useMemo(() => {
+    if (!isRecording || countdown !== null || readings.length < 10) return null;
+    const accel = {
+      x: readings.map(r => r.accelerometer.x),
+      y: readings.map(r => r.accelerometer.y),
+      z: readings.map(r => r.accelerometer.z),
+    };
+    const magnitude = calculateMagnitudeArray(accel);
+    const stats = calculateStats(magnitude);
+    return getTremorScore(stats);
+  }, [isRecording, countdown, readings]);
+
+  // Live FFT frequency during recording
+  const liveFrequency = useMemo(() => {
+    if (!isRecording || countdown !== null || readings.length < 32) return null;
+    const accel = {
+      x: readings.map(r => r.accelerometer.x),
+      y: readings.map(r => r.accelerometer.y),
+      z: readings.map(r => r.accelerometer.z),
+    };
+    const magnitude = calculateMagnitudeArray(accel);
+    const hz = samplingRateToHz(settings?.samplingRate ?? 'medium');
+    return analyzeFrequency(magnitude, hz);
+  }, [isRecording, countdown, readings, settings?.samplingRate]);
+
+  const liveScoreColor = liveScore !== null ? getScoreColor(liveScore) : accent;
 
   if (!settings) {
     return (
@@ -310,23 +494,44 @@ export default function RecordScreen() {
             </View>
           ) : isRecording ? (
             <View style={styles.recordingWrap}>
-              <View style={styles.visualizerWrap}>
-                <View style={[styles.circle, { borderColor: isDark ? '#2A3438' : '#E5E5E0' }]}>
-                  <View
-                    style={[
-                      styles.dot,
-                      {
-                        backgroundColor: accent,
-                        left: CIRCLE_RADIUS - DOT_SIZE / 2 + dotPosition.dx,
-                        top: CIRCLE_RADIUS - DOT_SIZE / 2 + dotPosition.dy,
-                      },
-                    ]}
-                  />
+              {/* Live score arc with dot visualizer inside */}
+              <View style={styles.liveScoreWrap}>
+                <ScoreArc score={liveScore ?? 0} size={220} strokeWidth={12} />
+                <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+                  <View style={[styles.circle, { borderColor: liveScoreColor + '30' }]}>
+                    <View
+                      style={[
+                        styles.dot,
+                        {
+                          backgroundColor: liveScoreColor,
+                          left: CIRCLE_RADIUS - DOT_SIZE / 2 + dotPosition.dx,
+                          top: CIRCLE_RADIUS - DOT_SIZE / 2 + dotPosition.dy,
+                        },
+                      ]}
+                    />
+                  </View>
                 </View>
               </View>
+              {liveScore !== null && (
+                <Text style={[styles.liveLabel, { color: liveScoreColor }]}>
+                  {getScoreStatus(liveScore)}
+                </Text>
+              )}
+              {/* Live frequency readout during recording */}
+              {liveFrequency && liveFrequency.dominantFrequency > 0 && (
+                <View style={freqStyles.liveFreqRow}>
+                  <Text style={[freqStyles.liveFreqLabel, { color: secondaryColor }]}>FREQ</Text>
+                  <Text style={[freqStyles.liveFreqValue, { color: '#7B61FF' }]}>
+                    {liveFrequency.dominantFrequency} Hz
+                  </Text>
+                  <Text style={[freqStyles.liveFreqType, { color: secondaryColor }]}>
+                    {liveFrequency.tremorType === 'none' ? '' : liveFrequency.tremorTypeLabel}
+                  </Text>
+                </View>
+              )}
               <View style={styles.progressSection}>
                 <View style={[styles.progressBg, { backgroundColor: isDark ? '#0D0D0D' : '#E5E5E0' }]}>
-                  <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: accent }]} />
+                  <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: liveScoreColor }]} />
                 </View>
                 <Text style={[styles.progressLabel, { color: secondaryColor }]}>
                   Measuring... {Math.round(progress)}%
@@ -451,6 +656,90 @@ export default function RecordScreen() {
               isDark={isDark}
             />
 
+            {/* FFT Frequency Classification Card */}
+            {frequencyAnalysis && frequencyAnalysis.dominantFrequency > 0 && (
+              <View style={[freqStyles.card, { backgroundColor: cardBg }]}>
+                <View style={freqStyles.headerRow}>
+                  <View style={[freqStyles.iconCircle, { backgroundColor: '#7B61FF20' }]}>
+                    <Text style={{ fontSize: 16 }}>{'\u{1F9E0}'}</Text>
+                  </View>
+                  <View style={freqStyles.headerInfo}>
+                    <Text style={[freqStyles.cardTitle, { color: secondaryColor }]}>Frequency Analysis</Text>
+                    <Text style={[freqStyles.mlBadge, { color: '#7B61FF' }]}>FFT CLASSIFIER</Text>
+                  </View>
+                </View>
+
+                {/* Dominant frequency hero */}
+                <View style={freqStyles.freqHero}>
+                  <Text style={[freqStyles.freqValue, { color: textColor }]}>
+                    {frequencyAnalysis.dominantFrequency}
+                  </Text>
+                  <Text style={[freqStyles.freqUnit, { color: secondaryColor }]}> Hz</Text>
+                </View>
+
+                {/* Classification result */}
+                <View style={[
+                  freqStyles.classificationPill,
+                  {
+                    backgroundColor: frequencyAnalysis.tremorType === 'parkinsonian' ? '#E85D5D20'
+                      : frequencyAnalysis.tremorType === 'essential' ? '#E8A44C20'
+                      : frequencyAnalysis.tremorType === 'enhanced_physiological' ? '#C4A46C20'
+                      : '#5CC5AB20',
+                  },
+                ]}>
+                  <Text style={[
+                    freqStyles.classificationText,
+                    {
+                      color: frequencyAnalysis.tremorType === 'parkinsonian' ? '#E85D5D'
+                        : frequencyAnalysis.tremorType === 'essential' ? '#E8A44C'
+                        : frequencyAnalysis.tremorType === 'enhanced_physiological' ? '#C4A46C'
+                        : '#5CC5AB',
+                    },
+                  ]}>
+                    {frequencyAnalysis.tremorTypeLabel}
+                  </Text>
+                </View>
+
+                {/* Confidence bar */}
+                <View style={freqStyles.confidenceRow}>
+                  <Text style={[freqStyles.confLabel, { color: secondaryColor }]}>Confidence</Text>
+                  <View style={[freqStyles.confTrack, { backgroundColor: isDark ? '#0D0D0D' : '#F0EDE8' }]}>
+                    <View style={[freqStyles.confFill, { width: `${frequencyAnalysis.confidence * 100}%`, backgroundColor: '#7B61FF' }]} />
+                  </View>
+                  <Text style={[freqStyles.confValue, { color: textColor }]}>{Math.round(frequencyAnalysis.confidence * 100)}%</Text>
+                </View>
+
+                {/* Frequency band breakdown — mini spectrum */}
+                <View style={freqStyles.bandsSection}>
+                  <Text style={[freqStyles.bandsTitle, { color: secondaryColor }]}>Power Distribution</Text>
+                  {frequencyAnalysis.bands.map((band) => (
+                    <View key={band.label} style={freqStyles.bandRow}>
+                      <Text style={[freqStyles.bandLabel, { color: secondaryColor }]}>{band.label}</Text>
+                      <View style={[freqStyles.bandTrack, { backgroundColor: isDark ? '#0D0D0D' : '#F0EDE8' }]}>
+                        <View style={[
+                          freqStyles.bandFill,
+                          {
+                            width: `${Math.min(band.percentage, 100)}%`,
+                            backgroundColor: band.label === 'Parkinsonian' ? '#E85D5D'
+                              : band.label === 'Essential' ? '#E8A44C'
+                              : band.label === 'Physiological' ? '#C4A46C'
+                              : band.label === 'High-freq' ? '#8A8A8E'
+                              : '#5CC5AB',
+                          },
+                        ]} />
+                      </View>
+                      <Text style={[freqStyles.bandPct, { color: textColor }]}>{Math.round(band.percentage)}%</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Disclaimer */}
+                <Text style={[freqStyles.disclaimer, { color: isDark ? '#4A4A4E' : '#AEAEB2' }]}>
+                  Based on FFT spectral analysis. Not a medical diagnosis.
+                </Text>
+              </View>
+            )}
+
             <View style={[styles.hintCard, { backgroundColor: cardBg }]}>
               <Text style={[styles.hintText, { color: secondaryColor }]}>
                 Session saved. View History or Graphs for trends over time.
@@ -529,6 +818,19 @@ const styles = StyleSheet.create({
   recordingWrap: {
     alignItems: 'center',
     width: '100%',
+  },
+  liveScoreWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 220,
+    height: 220,
+    marginBottom: 8,
+  },
+  liveLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginBottom: 16,
   },
   visualizerWrap: {
     alignItems: 'center',

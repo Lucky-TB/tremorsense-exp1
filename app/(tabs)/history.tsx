@@ -1,6 +1,6 @@
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { RecordingSession } from "@/types";
-import { getTremorScore, getTremorScoreLabel } from "@/utils/signalProcessing";
+import { getTremorScore, getTremorScoreLabel, analyzeFrequency } from "@/utils/signalProcessing";
 import {
   deleteSession,
   deleteSessions,
@@ -162,6 +162,9 @@ export default function HistoryScreen() {
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dayStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
+    // FFT analysis for this session
+    const freqInfo = item.magnitude.length >= 16 ? analyzeFrequency(item.magnitude) : null;
+
     return (
       <Pressable
         style={[
@@ -209,6 +212,21 @@ export default function HistoryScreen() {
 
         {/* Mini progress bar */}
         <MiniBar value={tremorScore} max={100} color={scoreColor} />
+
+        {/* FFT frequency classification tag */}
+        {freqInfo && freqInfo.dominantFrequency > 0 && freqInfo.tremorType !== 'none' && (
+          <View style={freqTagStyles.row}>
+            <View style={[freqTagStyles.badge, { backgroundColor: '#7B61FF18' }]}>
+              <Text style={freqTagStyles.badgeLabel}>FFT</Text>
+            </View>
+            <Text style={[freqTagStyles.freqText, { color: '#7B61FF' }]}>
+              {freqInfo.dominantFrequency} Hz
+            </Text>
+            <Text style={[freqTagStyles.typeText, { color: secondaryColor }]}>
+              {freqInfo.tremorTypeLabel}
+            </Text>
+          </View>
+        )}
 
         {/* Stats row */}
         <View style={styles.cardStatsRow}>
@@ -344,6 +362,33 @@ export default function HistoryScreen() {
                   <DetailRow label="Variability" value={selectedSession.stats.variability.toFixed(4)} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} />
                   <DetailRow label="Peak Amplitude" value={selectedSession.stats.peakAmplitude.toFixed(4)} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} last />
                 </View>
+
+                {/* FFT Frequency Analysis section in modal */}
+                {(() => {
+                  const freqData = selectedSession.magnitude.length >= 16
+                    ? analyzeFrequency(selectedSession.magnitude)
+                    : null;
+                  if (!freqData || freqData.dominantFrequency <= 0) return null;
+                  return (
+                    <View style={[styles.detailCard, { backgroundColor: cardBg }]}>
+                      <Text style={[styles.detailCardLabel, { color: secondaryColor }]}>FREQUENCY ANALYSIS (FFT)</Text>
+                      <DetailRow label="Dominant Frequency" value={`${freqData.dominantFrequency} Hz`} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} />
+                      <DetailRow label="Classification" value={freqData.tremorTypeLabel} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} />
+                      <DetailRow label="Confidence" value={`${Math.round(freqData.confidence * 100)}%`} textColor={textColor} secondaryColor={secondaryColor} borderColor={borderColor} />
+                      {freqData.bands.filter(b => b.percentage > 5).map((band, i, arr) => (
+                        <DetailRow
+                          key={band.label}
+                          label={`${band.label} (${band.range})`}
+                          value={`${Math.round(band.percentage)}%`}
+                          textColor={textColor}
+                          secondaryColor={secondaryColor}
+                          borderColor={borderColor}
+                          last={i === arr.length - 1}
+                        />
+                      ))}
+                    </View>
+                  );
+                })()}
 
                 {selectedSession.context && (
                   <View style={[styles.detailCard, { backgroundColor: cardBg }]}>
@@ -616,5 +661,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '400',
     paddingVertical: 8,
+  },
+});
+
+const freqTagStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 6,
+  },
+  badge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  badgeLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    color: '#7B61FF',
+  },
+  freqText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  typeText: {
+    fontSize: 11,
+    fontWeight: '500',
   },
 });

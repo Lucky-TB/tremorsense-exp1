@@ -19,7 +19,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Ionicons } from '@expo/vector-icons';
 import { loadAllSessions } from '@/utils/storage';
-import { getTremorScore } from '@/utils/signalProcessing';
+import { getTremorScore, analyzeFrequency } from '@/utils/signalProcessing';
 import type { RecordingSession } from '@/types';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -97,13 +97,23 @@ function buildSystemPrompt(sessions: RecordingSession[]): string {
 
   let dataContext = '';
   if (sessions.length > 0) {
+    // FFT frequency analysis for the latest session
+    const latestSession = sessions[0];
+    const freqInfo = latestSession.magnitude.length >= 16
+      ? analyzeFrequency(latestSession.magnitude)
+      : null;
+    const freqContext = freqInfo && freqInfo.dominantFrequency > 0
+      ? `\n- FFT frequency analysis of latest session: dominant frequency ${freqInfo.dominantFrequency} Hz, classified as "${freqInfo.tremorTypeLabel}" (confidence: ${Math.round(freqInfo.confidence * 100)}%)`
+      : '';
+
     dataContext = `
 The user has ${sessions.length} tremor recordings.
 - Latest tremor score: ${latest}/100 (${latest !== null ? getScoreStatus(latest) : 'N/A'})
 - Average score: ${avg}/100
 - Score range: ${Math.min(...scores)} to ${Math.max(...scores)}
 - Tremor score scale: 0-25 = OPTIMAL (very steady), 26-50 = GOOD, 51-75 = FAIR, 76-100 = ATTENTION (high tremor)
-- Lower scores mean steadier hands. Higher scores indicate more tremor activity.
+- Lower scores mean steadier hands. Higher scores indicate more tremor activity.${freqContext}
+- Frequency band reference: 3-5 Hz = Parkinsonian resting tremor pattern, 5-8 Hz = Essential tremor pattern, 8-12 Hz = Enhanced physiological tremor
 `;
   } else {
     dataContext = 'The user has no tremor recordings yet.';
@@ -181,7 +191,7 @@ function renderRichInline(text: string, baseStyle: StyleProp<TextStyle>, keyPref
       </Text>
     );
   });
-  return <Text style={baseStyle}>{children}</Text>;
+  return <Text key={keyPrefix} style={baseStyle}>{children}</Text>;
 }
 
 const richTextStyles = StyleSheet.create({

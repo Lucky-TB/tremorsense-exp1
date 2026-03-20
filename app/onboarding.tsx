@@ -61,20 +61,6 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bg }]} edges={['top', 'bottom']}>
       <View style={styles.inner}>
-        {/* Logo */}
-        <Animated.View
-          style={[
-            styles.logoSection,
-            { opacity: logoFade, transform: [{ translateY: logoSlide }] },
-          ]}
-        >
-          <View style={[styles.logoCircle, { backgroundColor: accentBg }]}>
-            <Text style={[styles.logoIcon, { color: accent }]}>
-              {'\u2261'}
-            </Text>
-          </View>
-        </Animated.View>
-
         {/* Content */}
         <Animated.View
           style={[
@@ -150,26 +136,15 @@ const styles = StyleSheet.create({
   inner: {
     flex: 1,
     paddingHorizontal: 28,
-    justifyContent: 'space-between',
-    paddingTop: 60,
+    justifyContent: 'flex-end',
     paddingBottom: 20,
-  },
-  logoSection: {
-    alignItems: 'center',
-  },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoIcon: {
-    fontSize: 36,
-    fontWeight: '700',
   },
   contentSection: {
     alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    paddingBottom: 0,
+    paddingTop: 80,
   },
   appName: {
     fontSize: 34,
